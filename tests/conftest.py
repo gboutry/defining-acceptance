@@ -55,7 +55,10 @@ def pytest_bdd_before_scenario(request, feature, scenario):
             plan_name = plan.capitalize()
             allure.dynamic.parent_suite(plan_name)
             break
-
+    if plan == "security":
+        # For security tests, we might want to add a specific label for severity
+        allure.dynamic.severity(allure.severity_level.CRITICAL)
+        raise Exception("Simulated failure")
     # allure.dynamic.title(scenario.name)
     allure.dynamic.suite(feature.name)
     allure.dynamic.sub_suite(scenario.name)
