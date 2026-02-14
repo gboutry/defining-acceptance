@@ -1,55 +1,61 @@
+import subprocess
+
 import pytest
 from pytest_bdd import scenarios, given, when, then, parsers
-import unittest.mock as mock
+import allure
 
 
 # Load all scenario outlines from the feature file
 scenarios("operations/deployments.feature")
 
 
-# Scenario-specific step
 @given(parsers.parse('the feature "{feature}" is enabled'))
-def verify_config(enable_feature, feature):
-    # Logic to ensure your tool actually enabled the feature,
-    # and perhaps generate/update the tempest.conf file.
-    enable_feature(feature)
+def enable_feature_step(enable_feature, feature):
+    """Enable a feature in the cloud deployment."""
+    with allure.step(f"Enabling feature: {feature}"):
+        try:
+            enable_feature(feature)
+        except Exception as e:
+            allure.attach(
+                str(e),
+                name="Feature enable error",
+                attachment_type=allure.attachment_type.TEXT
+            )
+            raise
 
 
 @pytest.fixture
 @when(parsers.parse('I run the Tempest tests for the "{feature}"'))
-def run_tempest(tempest_runner):
+def run_tempest_test(tempest_runner, feature):
+    """Run Tempest tests for the given feature."""
+    with allure.step(f"Running Tempest tests for {feature}"):
+        result = tempest_runner(feature)
 
-    # with allure.step(f"Executing Tempest CLI for {plugin_name}"):
-    #     # Run Tempest via subprocess
-    #     result = subprocess.run(
-    #         ["tempest", "run", "--regex", plugin_name],
-    #         capture_output=True,
-    #         text=True,
-    #         cwd=workspace
-    #     )
+        # Attach output to Allure
+        allure.attach(
+            result.stdout,
+            name="Tempest output",
+            attachment_type=allure.attachment_type.TEXT
+        )
 
-    #     # --- ALLURE MAGIC HERE ---
-    #     # Attach the raw console output directly to the Allure report
-    #     allure.attach(
-    #         result.stdout,
-    #         name="Tempest Console Output (stdout)",
-    #         attachment_type=allure.attachment_type.TEXT
-    #     )
+        if result.stderr:
+            allure.attach(
+                result.stderr,
+                name="Tempest errors",
+                attachment_type=allure.attachment_type.TEXT
+            )
 
-    #     if result.stderr:
-    #         allure.attach(
-    #             result.stderr,
-    #             name="Tempest Errors (stderr)",
-    #             attachment_type=allure.attachment_type.TEXT
-    #         )
-    # return result
-    tempest_runner()
-    return mock.Mock(returncode=0)
+    return result
 
 
 @then("the Tempest run should pass successfully")
-def check_tempest_passed(run_tempest):
-    # Assert that the subprocess exited with code 0
-    assert run_tempest.returncode == 0, (
-        "Tempest tests failed! Check the attached logs in Allure."
-    )
+def check_tempest_passed(run_tempest_test):
+    """Verify that the Tempest tests passed."""
+    result = run_tempest_test
+
+    # Check the return code
+    if result.returncode != 0:
+        raise AssertionError(
+            f"Tempest tests failed with return code {result.returncode}. "
+            "Check the attached logs in Allure."
+        )
