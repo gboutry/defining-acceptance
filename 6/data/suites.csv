@@ -1,0 +1,61 @@
+"DESCRIPTION","DURATION IN MS","NAME","PARENT SUITE","START TIME","STATUS","STOP TIME","SUB SUITE","SUITE","TEST CLASS","TEST METHOD"
+"As a cloud operator
+I want my deployment tool to correctly configure OpenStack services
+So that they pass native integration tests","2","test_features_are_deployed_correctly[secrets]","Operations","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Features are deployed correctly","OpenStack Service Deployments","",""
+"As a cloud operator
+I want to verify network connectivity and DNS resolution
+So that I can ensure reliable network communication","2","test_internal_network_communication","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Internal network communication","Network Resilience","",""
+"As a cloud operator
+I want to verify VMs start successfully and remain running
+So that I can ensure service availability and stability","1","test_vm_recovers_from_restart","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","VM recovers from restart","VM Availability","",""
+"As a cloud operator
+I want to verify SSH access controls
+So that I can ensure only authorized users can access VMs","2","test_ssh_without_key_fails","Security","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","SSH without key fails","Access Control","",""
+"As a cloud operator
+I want to measure network performance between VMs
+So that I can validate network infrastructure meets requirements","1","test_external_network_throughput","Performance","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","External network throughput","Network Throughput","",""
+"As a cloud operator
+I want to verify network connectivity and DNS resolution
+So that I can ensure reliable network communication","1","test_dns_resolution","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","DNS resolution works","Network Resilience","",""
+"As a cloud operator
+I want my deployment tool to correctly configure OpenStack services
+So that they pass native integration tests","1","test_features_are_deployed_correctly[caas]","Operations","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Features are deployed correctly","OpenStack Service Deployments","",""
+"As a cloud operator
+I want to verify VMs start successfully and remain running
+So that I can ensure service availability and stability","1","test_vm_starts_successfully","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","VM starts successfully","VM Availability","",""
+"As a cloud operator
+I want my deployment tool to correctly configure OpenStack services
+So that they pass native integration tests","1","test_features_are_deployed_correctly[loadbalancer]","Operations","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Features are deployed correctly","OpenStack Service Deployments","",""
+"As a cloud operator
+I want to verify storage remains available during failures
+So that I can ensure data storage is resilient and fault-tolerant","1","test_vm_with_volume_spawn","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","VM with volume can be spawned","Storage Availability","",""
+"As a cloud operator
+I want to verify VMs start successfully and remain running
+So that I can ensure service availability and stability","1","test_vm_remains_running","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","VM remains running for extended period","VM Availability","",""
+"As a cloud operator
+I want to verify data is encrypted in transit
+So that I can ensure data confidentiality and integrity","1","test_internal_traffic_encryption","Security","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Internal network traffic is encrypted","Data Encryption","",""
+"As a cloud operator
+I want to measure network performance between VMs
+So that I can validate network infrastructure meets requirements","1","test_internal_network_different_host","Performance","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Internal network throughput on different host","Network Throughput","",""
+"As a cloud operator
+I want to verify network connectivity and DNS resolution
+So that I can ensure reliable network communication","1","test_network_acls_enforced","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Network ACLs enforced","Network Resilience","",""
+"As a cloud operator
+I want to verify data is encrypted in transit
+So that I can ensure data confidentiality and integrity","1","test_external_connections_tls","Security","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","External connections use TLS","Data Encryption","",""
+"As a cloud operator
+I want to verify storage remains available during failures
+So that I can ensure data storage is resilient and fault-tolerant","12","test_storage_survives_osd_failure","Reliability","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Storage remains available when one OSD host fails","Storage Availability","",""
+"As a cloud operator
+I want to verify network isolation between VMs and networks
+So that I can ensure proper security boundaries are enforced","1","test_restricted_network_isolation","Security","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Restricted network cannot reach external IPs","Network Isolation","",""
+"As a cloud operator
+I want to verify SSH access controls
+So that I can ensure only authorized users can access VMs","1","test_ssh_with_correct_key_succeeds","Security","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","SSH with correct key succeeds","Access Control","",""
+"As a cloud operator
+I want to verify network isolation between VMs and networks
+So that I can ensure proper security boundaries are enforced","2","test_proxy_filtering","Security","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Proxy filtering works","Network Isolation","",""
+"As a cloud operator
+I want to measure network performance between VMs
+So that I can validate network infrastructure meets requirements","1","test_internal_network_same_host","Performance","Sat Feb 14 00:01:27 UTC 2026","passed","Sat Feb 14 00:01:27 UTC 2026","Internal network throughput on same host","Network Throughput","",""
