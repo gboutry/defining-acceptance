@@ -4,7 +4,9 @@ Feature: VM Availability
   So that I can ensure service availability and stability
 
   Background:
-    Given the cloud is provisionned
+    Given the cloud is provisioned
+    And the cloud is configured for sample usage
+    And a VM is running
 
   @reliability
   Scenario: VM starts successfully
@@ -14,14 +16,12 @@ Feature: VM Availability
 
   @reliability
   Scenario: VM remains running for extended period
-    Given a running VM
     When I wait for 60 seconds
     Then the VM should still be running
     And the VM should still be reachable via SSH
 
   @reliability
   Scenario: VM recovers from restart
-    Given a running VM
     When I restart the VM
     Then the VM should come back up within 300 seconds
     And the VM should be reachable via SSH after restart

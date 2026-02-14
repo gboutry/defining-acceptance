@@ -4,8 +4,9 @@ Feature: Storage Availability
   So that I can ensure data storage is resilient and fault-tolerant
 
   Background:
-    Given the cloud is provisionned
-    And a 3 node deployment
+    Given the cloud is provisioned
+    And the cloud is configured for sample usage
+    And a 3-node deployment exists
 
   @reliability
   Scenario: VM with volume can be spawned
@@ -17,6 +18,6 @@ Feature: Storage Availability
   Scenario: Storage remains available when one OSD host fails
     Given a VM with a volume attached
     When I stop the OSD daemons on one host
-    Then the storage should remain available
+    Then storage should remain available
     And I should be able to read from the volume
     And I should be able to write to the volume

@@ -1,14 +1,21 @@
 """
 Shared step definitions for security tests.
-Common steps used across multiple security scenarios.
 """
 
 import pytest
 from pytest_bdd import given
 
 
-# Common step for VM setup - shared across security tests
-@given("a VM")
+@given("the cloud is provisioned")
+def cloud_provisioned():
+    pass
+
+
+@given("the cloud is configured for sample usage")
+def cloud_configured():
+    pass
+
+
+@given("a VM is running")
 def setup_vm():
-    # Logic to setup/provision a VM
     pass

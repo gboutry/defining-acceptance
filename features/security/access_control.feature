@@ -4,16 +4,16 @@ Feature: Access Control
   So that I can ensure only authorized users can access VMs
 
   Background:
-    Given the cloud is provisionned
+    Given the cloud is provisioned
+    And the cloud is configured for sample usage
+    And a VM is running
 
   @security
   Scenario: SSH with correct key succeeds
-    Given a VM
-    When I connect with correct SSH key
+    When I connect with the correct SSH key
     Then the connection should succeed
 
   @security
   Scenario: SSH without key fails
-    Given a VM
-    When I connect without SSH key
+    When I connect without an SSH key
     Then the connection should be refused

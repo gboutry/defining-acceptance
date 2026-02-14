@@ -1,5 +1,5 @@
 """
-Shared step definitions for network throughput tests.
+Shared step definitions for operations tests.
 """
 
 import pytest

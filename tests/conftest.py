@@ -7,33 +7,78 @@ import yaml
 from pytest_bdd import given
 import allure
 
+from defining_acceptance.provision_cloud import (
+    get_testbed_with_ip_path,
+    get_ssh_private_key_path,
+    get_ssh_public_key_path,
+    get_sunbeam_dev_path,
+)
 
-TEST_BED_FILE = Path(os.environ.get("TEST_BED_FILE", "testbed.yaml"))
-SSH_KEY_DIR = Path(os.environ.get("SSH_KEY_DIR", "/tmp/sunbeam-ssh-keys"))
+
+def get_test_bed_file():
+    """Get TEST_BED_FILE path, evaluated at runtime."""
+    # First check if the environment variable is set
+    if "TEST_BED_FILE" in os.environ:
+        return Path(os.environ.get("TEST_BED_FILE"))
+    
+    # Check if there's a local testbed.yaml with IP in the defining-acceptance repo
+    # Path(__file__) is tests/conftest.py, so .parent.parent gives us defining-acceptance/
+    local_testbed = Path(__file__).parent.parent / "testbed.yaml"
+    if local_testbed.exists():
+        try:
+            with open(local_testbed) as f:
+                data = yaml.safe_load(f)
+                machines = data.get("machines", [])
+                if machines and "ip" in machines[0]:
+                    return local_testbed
+        except Exception:
+            pass
+    
+    # Default to the testbed_with_ip.yaml from sunbeam-proxified-dev
+    return get_testbed_with_ip_path()
+
+
+def get_ssh_key_dir():
+    """Get SSH_KEY_DIR path, evaluated at runtime."""
+    # First check if the environment variable is set
+    if "SSH_KEY_DIR" in os.environ:
+        return Path(os.environ.get("SSH_KEY_DIR"))
+    
+    # Check if there's a local testbed.yaml with keys in defining-acceptance
+    local_ssh_dir = Path(__file__).parent.parent
+    priv_key = local_ssh_dir / "ssh_private_key"
+    pub_key = local_ssh_dir / "ssh_public_key.pub"
+    if priv_key.exists() and pub_key.exists():
+        return local_ssh_dir
+    
+    # Default to sunbeam-proxified-dev directory
+    return get_sunbeam_dev_path()
 
 
 @pytest.fixture(scope="session")
 def testbed():
     """Load testbed configuration from YAML file."""
-    if not TEST_BED_FILE.exists():
+    testbed_file = get_test_bed_file()
+    if not testbed_file.exists():
         raise FileNotFoundError(
-            f"Testbed file not found: {TEST_BED_FILE}. "
+            f"Testbed file not found: {testbed_file}. "
             f"Set TEST_BED_FILE environment variable to point to the infrastructure YAML."
         )
 
-    with open(TEST_BED_FILE) as f:
+    with open(testbed_file) as f:
         return yaml.safe_load(f)
 
 
 @pytest.fixture(scope="session")
 def ssh_keys():
     """Load SSH keys from the SSH_KEY_DIR."""
-    private_key_path = SSH_KEY_DIR / "ssh_private_key"
-    public_key_path = SSH_KEY_DIR / "ssh_public_key"
+    ssh_key_dir = get_ssh_key_dir()
+    private_key_path = ssh_key_dir / "ssh_private_key"
+    public_key_path = ssh_key_dir / "ssh_public_key.pub"
 
     if not private_key_path.exists() or not public_key_path.exists():
         raise FileNotFoundError(
-            f"SSH keys not found in {SSH_KEY_DIR}. "
+            f"SSH keys not found in {ssh_key_dir}. "
             f"Set SSH_KEY_DIR environment variable or ensure keys are in /tmp/sunbeam-ssh-keys/"
         )
 
@@ -153,22 +198,57 @@ def bootstrapped(testbed, ssh_keys):
 def enable_feature():
     """Fixture to enable a feature in the cloud deployment."""
     def _feature_enabler(name: str):
-        """Enable a feature in the cloud."""
-        # Features in OpenStack are typically enabled through:
-        # 1. Sunbeam addons (sunbeam addons enable <addon>)
-        # 2. Juju charms
-        # 3. OpenStack configuration
-
+        """Enable a feature in the cloud using sunbeam enable."""
         with allure.step(f"Enabling feature: {name}"):
             if name == "secrets":
-                # Enable Vault for secrets
-                cmd = ["sunbeam", "addon", "enable", "vault"]
+                # Enable Vault first (dependency), then secrets
+                # From docs: "The Vault feature is a dependency of the Secrets feature"
+                vault_cmd = ["sunbeam", "enable", "vault"]
+                result = subprocess.run(
+                    vault_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+                if result.returncode != 0:
+                    allure.attach(
+                        result.stdout,
+                        name="Enable vault stdout",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    allure.attach(
+                        result.stderr,
+                        name="Enable vault stderr",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    # Continue to enable secrets anyway
+                
+                cmd = ["sunbeam", "enable", "secrets"]
             elif name == "caas":
-                # Enable K8s for CaaS
-                cmd = ["sunbeam", "cluster", "add-k8s", "--accept-defaults"]
+                # From docs: "The secrets and load-balancer features are dependencies of the CaaS feature"
+                # Enable loadbalancer first
+                lb_cmd = ["sunbeam", "enable", "loadbalancer"]
+                result = subprocess.run(
+                    lb_cmd,
+                    capture_output=True,
+                    text=True,
+                    timeout=600,
+                )
+                if result.returncode != 0:
+                    allure.attach(
+                        result.stdout,
+                        name="Enable loadbalancer stdout",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                    allure.attach(
+                        result.stderr,
+                        name="Enable loadbalancer stderr",
+                        attachment_type=allure.attachment_type.TEXT
+                    )
+                
+                cmd = ["sunbeam", "enable", "caas"]
             elif name == "loadbalancer":
-                # Enable Octavia for load balancing
-                cmd = ["sunbeam", "addon", "enable", "octavia"]
+                cmd = ["sunbeam", "enable", "loadbalancer"]
             else:
                 raise ValueError(f"Unknown feature: {name}")
 

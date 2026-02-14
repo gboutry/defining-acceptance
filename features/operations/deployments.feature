@@ -4,7 +4,8 @@ Feature: OpenStack Service Deployments
   So that they pass native integration tests
 
   Background:
-    Given the cloud is provisionned
+    Given the cloud is provisioned
+    And the cloud is configured for sample usage
 
   @operations
   Scenario Outline: Features are deployed correctly

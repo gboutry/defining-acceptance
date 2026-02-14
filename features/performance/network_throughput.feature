@@ -4,23 +4,23 @@ Feature: Network Throughput
   So that I can validate network infrastructure meets requirements
 
   Background:
-    Given the cloud is provisionned
-    And all VMs are reachable via SSH
+    Given the cloud is provisioned
+    And the cloud is configured for sample usage
+    And a VM is running
 
   @performance
   Scenario: Internal network throughput on same host
-    Given two VMs on the same network and host
-    When I measure throughput between them
+    Given a second VM on the same network and host
+    When I measure throughput between the VMs
     Then throughput should be at least 1 Gbps
 
   @performance
   Scenario: Internal network throughput on different host
-    Given two VMs on the same network and different host
-    When I measure throughput between them
+    Given a second VM on the same network but different host
+    When I measure throughput between the VMs
     Then throughput should be at least 1 Gbps
 
   @performance
   Scenario: External network throughput
-    Given a running VM
-    When I download data from external source
+    When I download data from an external source
     Then download speed should be acceptable

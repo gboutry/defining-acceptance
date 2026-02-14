@@ -24,7 +24,6 @@ def enable_feature_step(enable_feature, feature):
             raise
 
 
-@pytest.fixture
 @when(parsers.parse('I run the Tempest tests for the "{feature}"'))
 def run_tempest_test(tempest_runner, feature):
     """Run Tempest tests for the given feature."""

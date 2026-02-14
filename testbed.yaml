@@ -1,0 +1,5 @@
+machines:
+  - hostname: bm0
+    osd-devices: bm0_osd0,bm0_osd1,bm0_osd2
+    external-networks:
+      external: restrictedbr0
