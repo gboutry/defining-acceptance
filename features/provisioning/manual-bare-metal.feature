@@ -9,14 +9,14 @@ Feature: Deploy with manual bare metal provider
     And the openstack snap is installed
 
   @provisioning
-  @requires(single-node)
+  @single-node
   Scenario: Prepare node for bootstrap
     Given the openstack snap is installed
     When I run the prepare-node-script
     Then the node should be ready for bootstrap
 
   @provisioning
-  @requires(single-node)
+  @single-node
   Scenario: Bootstrap single-node cloud
     Given the node is prepared
     When I bootstrap the cloud with default roles

@@ -8,14 +8,14 @@ Feature: Deploy with external Juju controller
     And the controller has a dedicated user with superuser permissions
 
   @provisioning
-  @requires(external-juju)
+  @external-juju
   Scenario: Register external Juju controller
     Given I have the external controller details
     When I register the external Juju controller in Sunbeam
     Then the controller should be available in Sunbeam
 
   @provisioning
-  @requires(external-juju)
+  @external-juju
   Scenario: Bootstrap cloud with external controller
     Given the external Juju controller is registered
     When I bootstrap the cloud with --controller option

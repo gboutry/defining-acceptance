@@ -6,6 +6,7 @@ import pytest
 import yaml
 from pytest_bdd import given
 import allure
+from unittest.mock import Mock
 
 from defining_acceptance.provision_cloud import (
     get_testbed_with_ip_path,
@@ -13,6 +14,10 @@ from defining_acceptance.provision_cloud import (
     get_ssh_public_key_path,
     get_sunbeam_dev_path,
 )
+
+
+# Mock mode - set MOCK_MODE=1 to run tests without actual sunbeam
+MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
 
 
 def get_test_bed_file():
@@ -58,6 +63,19 @@ def get_ssh_key_dir():
 @pytest.fixture(scope="session")
 def testbed():
     """Load testbed configuration from YAML file."""
+    # In mock mode, return mock data
+    if MOCK_MODE:
+        return {
+            "machines": [
+                {
+                    "hostname": "bm0",
+                    "ip": "192.168.1.100",
+                    "osd-devices": "bm0_osd0,bm0_osd1,bm0_osd2",
+                    "external-networks": {"external": "restrictedbr0"},
+                }
+            ]
+        }
+    
     testbed_file = get_test_bed_file()
     if not testbed_file.exists():
         raise FileNotFoundError(
@@ -72,6 +90,13 @@ def testbed():
 @pytest.fixture(scope="session")
 def ssh_keys():
     """Load SSH keys from the SSH_KEY_DIR."""
+    # In mock mode, return mock data
+    if MOCK_MODE:
+        return {
+            "public": "ssh-rsa MOCK_KEY test@example.com",
+            "private": "-----BEGIN RSA PRIVATE KEY-----\nMOCK_KEY\n-----END RSA PRIVATE KEY-----",
+        }
+    
     ssh_key_dir = get_ssh_key_dir()
     private_key_path = ssh_key_dir / "ssh_private_key"
     public_key_path = ssh_key_dir / "ssh_public_key.pub"
@@ -98,6 +123,18 @@ def bootstrapped(testbed, ssh_keys):
     2. Reads SSH keys from the configured directory
     3. Runs Sunbeam commands to bootstrap the cloud
     """
+    # In mock mode, return mock data without running actual commands
+    if MOCK_MODE:
+        machines = testbed.get("machines", [])
+        primary_machine = machines[0]
+        return {
+            "infrastructure": testbed,
+            "ssh_keys": ssh_keys,
+            "primary_hostname": primary_machine.get("hostname", "mock-host"),
+            "primary_ip": primary_machine.get("ip", "192.168.1.1"),
+            "openrc_path": "demo-openrc",
+        }
+    
     # Parse infrastructure from testbed
     machines = testbed.get("machines", [])
     if not machines:
@@ -199,6 +236,11 @@ def enable_feature():
     """Fixture to enable a feature in the cloud deployment."""
     def _feature_enabler(name: str):
         """Enable a feature in the cloud using sunbeam enable."""
+        # In mock mode, just return a mock result
+        if MOCK_MODE:
+            allure.step(f"[MOCK] Enabling feature: {name}")
+            return Mock(returncode=0, stdout=f"[MOCK] Enabled {name}", stderr="")
+        
         with allure.step(f"Enabling feature: {name}"):
             if name == "secrets":
                 # Enable Vault first (dependency), then secrets
@@ -286,6 +328,11 @@ def tempest_runner(bootstrapped):
     """Fixture to run Tempest tests."""
     def _runner(feature: str = None):
         """Run Tempest tests for the given feature."""
+        # In mock mode, just return a mock result
+        if MOCK_MODE:
+            allure.step(f"[MOCK] Running Tempest tests for {feature or 'all'}")
+            return Mock(returncode=0, stdout="[MOCK] Tempest tests passed", stderr="")
+        
         # Run Tempest tests for the given feature
         # Tempest is typically run via:
         # 1. tempest run --regex <pattern>

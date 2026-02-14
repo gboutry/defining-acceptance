@@ -8,21 +8,21 @@ Feature: Deploy with MAAS
     And the machines are commissioned and ready in MAAS
 
   @provisioning
-  @requires(maas)
+  @maas
   Scenario: Add MAAS provider to Sunbeam
     Given I have a MAAS region API token
     When I add the MAAS provider to Sunbeam
     Then the MAAS provider should be registered
 
   @provisioning
-  @requires(maas)
+  @maas
   Scenario: Map network spaces
     Given the MAAS provider is configured
     When I map network spaces to cloud networks
     Then the network mappings should be configured
 
   @provisioning
-  @requires(maas)
+  @maas
   Scenario: Bootstrap cloud with MAAS
     Given the MAAS provider is configured
     And network spaces are mapped

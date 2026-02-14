@@ -9,12 +9,14 @@ Feature: Storage Availability
     And a 3-node deployment exists
 
   @reliability
+  @three-node
   Scenario: VM with volume can be spawned
     When I spawn a VM with a volume attached
     Then the VM should be running
     And the volume should be accessible
 
   @reliability
+  @three-node
   Scenario: Storage remains available when one OSD host fails
     Given a VM with a volume attached
     When I stop the OSD daemons on one host

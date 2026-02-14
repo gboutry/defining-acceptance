@@ -35,7 +35,10 @@ markers = [
     "operations: marks tests as part of the operations suite",
     "performance: marks tests as part of the performance suite",
     "provisioning: marks tests as part of the provisioning suite",
-    "requires: marks tests that require specific deployment configuration",
+    "maas: marks tests that require MAAS infrastructure",
+    "single-node: marks tests that require single-node deployment",
+    "external-juju: marks tests that require external Juju controller",
+    "three-node: marks tests that require 3-node deployment",
 ]
 
 [dependency-groups]
