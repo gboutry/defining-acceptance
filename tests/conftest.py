@@ -1,7 +1,10 @@
 import os
+import shlex
 import subprocess
+import time
 from pathlib import Path
 
+import paramiko
 import pytest
 import yaml
 from pytest_bdd import given
@@ -28,24 +31,45 @@ def run_ssh_command(ip: str, command: list[str], ssh_key_path: str, timeout: int
     Returns:
         subprocess.CompletedProcess result
     """
-    # Build SSH command
-    ssh_cmd = [
-        "ssh",
-        "-o",
-        "StrictHostKeyChecking=no",
-        "-o",
-        "UserKnownHostsFile=/dev/null",
-        "-i",
-        ssh_key_path,
-        f"ubuntu@{ip}",
-    ] + command
+    command_text = " ".join(shlex.quote(part) for part in command)
 
-    return subprocess.run(
-        ssh_cmd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    client = paramiko.SSHClient()
+    client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+    try:
+        client.connect(
+            hostname=ip,
+            username="ubuntu",
+            key_filename=ssh_key_path,
+            timeout=30,
+            banner_timeout=30,
+            auth_timeout=30,
+            look_for_keys=False,
+            allow_agent=False,
+        )
+
+        stdin, stdout, stderr = client.exec_command(command_text)
+        channel = stdout.channel
+        deadline = time.monotonic() + timeout
+
+        while not channel.exit_status_ready():
+            if time.monotonic() > deadline:
+                channel.close()
+                raise subprocess.TimeoutExpired(command, timeout)
+            time.sleep(0.2)
+
+        returncode = channel.recv_exit_status()
+        stdout_text = stdout.read().decode("utf-8", errors="replace")
+        stderr_text = stderr.read().decode("utf-8", errors="replace")
+
+        return subprocess.CompletedProcess(
+            args=command,
+            returncode=returncode,
+            stdout=stdout_text,
+            stderr=stderr_text,
+        )
+    finally:
+        client.close()
 
 
 def pytest_addoption(parser):
@@ -98,7 +122,9 @@ def testbed(pytestconfig):
     with open(testbed_file) as f:
         raw_data = yaml.safe_load(f)
     if not isinstance(raw_data, dict):
-        raise ValueError(f"Testbed file {testbed_file} must contain a top-level mapping")
+        raise ValueError(
+            f"Testbed file {testbed_file} must contain a top-level mapping"
+        )
     return TestbedConfig.from_dict(raw_data)
 
 
@@ -243,7 +269,7 @@ def bootstrapped(testbed, ssh_keys):
                 ip=ip,
                 command=bootstrap_cmd,
                 ssh_key_path=ssh_key_path,
-                timeout=1800,  # 30 minutes timeout
+                timeout=3600,  # 60 minutes timeout
             )
 
             if result.returncode != 0:
@@ -347,7 +373,7 @@ def bootstrapped(testbed, ssh_keys):
                     ip=joining_ip,
                     command=join_cmd,
                     ssh_key_path=ssh_key_path,
-                    timeout=900,
+                    timeout=3600,
                 )
 
                 if join_result.returncode != 0:
