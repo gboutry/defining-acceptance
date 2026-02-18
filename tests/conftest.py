@@ -18,6 +18,77 @@ from defining_acceptance.testbed import MachineConfig, TestbedConfig
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
 
 
+def _load_testbed_for_collection(config) -> TestbedConfig:
+    """Load testbed config during collection phase (before fixtures are available)."""
+    testbed_file_opt = config.getoption("testbed_file", default=None)
+    testbed_path = (
+        Path(testbed_file_opt) if testbed_file_opt else Path.cwd() / "testbed.yaml"
+    )
+    if MOCK_MODE:
+        return TestbedConfig.from_dict(
+            {
+                "machines": [
+                    {
+                        "hostname": "bm0",
+                        "ip": "192.168.1.100",
+                        "roles": ["control", "compute", "storage"],
+                        "osd_devices": ["/dev/sdb"],
+                        "external_networks": {"external": "restrictedbr0"},
+                    }
+                ],
+                "deployment": {
+                    "provider": "manual",
+                    "topology": "single-node",
+                    "channel": "2024.1/edge",
+                },
+                "features": [],
+            }
+        )
+    if not testbed_path.exists():
+        return TestbedConfig.from_dict(
+            {
+                "machines": [{"hostname": "unknown", "ip": "0.0.0.0", "roles": []}],
+                "deployment": {
+                    "provider": "manual",
+                    "topology": "single-node",
+                    "channel": "2024.1/edge",
+                },
+            }
+        )
+    return TestbedConfig.from_yaml(testbed_path)
+
+
+def pytest_collection_modifyitems(config, items):
+    """Auto-skip tests whose marker requirements are not met by the testbed."""
+    testbed = _load_testbed_for_collection(config)
+
+    skip_rules = {
+        "single_node": lambda tb: not tb.is_single_node,
+        "single-node": lambda tb: not tb.is_single_node,
+        "multi_node": lambda tb: not tb.is_multi_node,
+        "multi-node": lambda tb: not tb.is_multi_node,
+        "maas": lambda tb: not tb.is_maas,
+        "external_juju": lambda tb: not tb.has_external_juju,
+        "external-juju": lambda tb: not tb.has_external_juju,
+        "proxy": lambda tb: not tb.has_proxy,
+        "three_node": lambda tb: len(tb.machines) < 3,
+        "three-node": lambda tb: len(tb.machines) < 3,
+        # Provisioning marker - skip when cloud is already provisioned
+        "provisioning": lambda tb: tb.is_provisioned,
+        # Feature markers
+        "secrets": lambda tb: not tb.has_feature("secrets"),
+        "caas": lambda tb: not tb.has_feature("caas"),
+        "loadbalancer": lambda tb: not tb.has_feature("loadbalancer"),
+    }
+
+    for item in items:
+        for marker_name, should_skip in skip_rules.items():
+            if item.get_closest_marker(marker_name) and should_skip(testbed):
+                item.add_marker(
+                    pytest.mark.skip(reason=f"Testbed does not satisfy @{marker_name}")
+                )
+
+
 def run_ssh_command(ip: str, command: list[str], ssh_key_path: str, timeout: int = 600):
     """
     Run a command on a remote host via SSH.
@@ -92,7 +163,6 @@ def pytest_addoption(parser):
 @pytest.fixture(scope="session")
 def testbed(pytestconfig):
     """Load testbed configuration from YAML file."""
-    # In mock mode, return mock data
     if MOCK_MODE:
         return TestbedConfig.from_dict(
             {
@@ -100,10 +170,17 @@ def testbed(pytestconfig):
                     {
                         "hostname": "bm0",
                         "ip": "192.168.1.100",
-                        "osd-devices": "bm0_osd0,bm0_osd1,bm0_osd2",
-                        "external-networks": {"external": "restrictedbr0"},
+                        "roles": ["control", "compute", "storage"],
+                        "osd_devices": ["/dev/sdb"],
+                        "external_networks": {"external": "restrictedbr0"},
                     }
-                ]
+                ],
+                "deployment": {
+                    "provider": "manual",
+                    "topology": "single-node",
+                    "channel": "2024.1/edge",
+                },
+                "features": [],
             }
         )
 
@@ -113,19 +190,7 @@ def testbed(pytestconfig):
         if configured_testbed_path
         else Path.cwd() / "testbed.yaml"
     )
-    if not testbed_file.exists():
-        raise FileNotFoundError(
-            f"Testbed file not found: {testbed_file}. "
-            f"Use --testbed-file to point to the infrastructure YAML."
-        )
-
-    with open(testbed_file) as f:
-        raw_data = yaml.safe_load(f)
-    if not isinstance(raw_data, dict):
-        raise ValueError(
-            f"Testbed file {testbed_file} must contain a top-level mapping"
-        )
-    return TestbedConfig.from_dict(raw_data)
+    return TestbedConfig.from_yaml(testbed_file)
 
 
 @pytest.fixture(scope="session")
@@ -189,14 +254,8 @@ def bootstrapped(testbed, ssh_keys):
         return machine.fqdn or machine.hostname
 
     def machine_role(machine: MachineConfig, is_primary: bool) -> str:
-        role = machine.role
-        if isinstance(role, str) and role.strip():
-            return role
-
-        roles = machine.roles
-        if isinstance(roles, list) and roles:
-            return ",".join(roles)
-
+        if machine.roles:
+            return ",".join(machine.roles)
         return "control,compute,storage" if is_primary else "compute,storage"
 
     # Take the first machine as the primary for sunbeam bootstrap
@@ -523,7 +582,7 @@ def tempest_runner(bootstrapped):
 
 
 # Common step shared across all features
-@given("the cloud is provisionned")
+@given("the cloud is provisioned")
 def provision_cloud(bootstrapped):
     """Verify that the cloud has been provisioned."""
     # The bootstrapped fixture already does the provisioning

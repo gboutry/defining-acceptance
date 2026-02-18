@@ -55,7 +55,9 @@ def get_machines(testbed_path: Path | None = None) -> list[dict[str, Any]]:
     return machines if isinstance(machines, list) else []
 
 
-def get_machine(hostname: str, testbed_path: Path | None = None) -> dict[str, Any] | None:
+def get_machine(
+    hostname: str, testbed_path: Path | None = None
+) -> dict[str, Any] | None:
     """Get a specific machine by hostname."""
     machines = get_machines(testbed_path)
     for machine in machines:
