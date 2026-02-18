@@ -39,7 +39,7 @@ error-prone.  A declarative YAML file:
 | `deployment` | yes | Provider (`manual` / `maas`), topology (`single-node` / `multi-node`), snap channel, and whether the cloud is already provisioned. |
 | `machines` | yes | One entry per physical (or virtual) node.  IP, FQDN, roles, OSD devices, external network mappings. |
 | `features` | no | List of Sunbeam features to enable after bootstrap (`secrets`, `caas`, `loadbalancer`, ...). |
-| `network` | no | External (provider) network details and optional HTTP proxy configuration. |
+| `network` | no | Map of external (provider) networks (`physnet → {cidr, gateway}`) and optional HTTP proxy configuration. |
 | `juju` | no | Whether to use an external Juju controller (and its credentials). |
 | `maas` | no | MAAS API endpoint, API key, and network-space mappings.  Only relevant when `deployment.provider` is `maas`. |
 | `ssh` | no | SSH user and key paths used by the harness to connect to the machines. |

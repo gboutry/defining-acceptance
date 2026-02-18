@@ -125,31 +125,26 @@ class ProxyConfig:
 
 @dataclass(frozen=True)
 class ExternalNetworkConfig:
-    name: str
     cidr: str
     gateway: str
 
     @classmethod
-    def from_dict(cls, data: dict) -> ExternalNetworkConfig:
-        name = data.get("name")
-        if not isinstance(name, str) or not name.strip():
-            raise ValueError("network.external.name must be a non-empty string")
-
+    def from_dict(cls, physnet: str, data: dict) -> ExternalNetworkConfig:
         cidr = data.get("cidr")
         if not isinstance(cidr, str) or not cidr.strip():
-            raise ValueError("network.external.cidr must be a non-empty string")
+            raise ValueError(f"network.external.{physnet}.cidr must be a non-empty string")
 
         gateway = data.get("gateway")
         if not isinstance(gateway, str) or not gateway.strip():
-            raise ValueError("network.external.gateway must be a non-empty string")
+            raise ValueError(f"network.external.{physnet}.gateway must be a non-empty string")
 
-        return cls(name=name, cidr=cidr, gateway=gateway)
+        return cls(cidr=cidr, gateway=gateway)
 
 
 @dataclass(frozen=True)
 class NetworkConfig:
     proxy: Optional[ProxyConfig] = None
-    external: Optional[ExternalNetworkConfig] = None
+    external: dict[str, ExternalNetworkConfig] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict) -> NetworkConfig:
@@ -160,12 +155,14 @@ class NetworkConfig:
                 raise ValueError("network.proxy must be a mapping")
             proxy = ProxyConfig.from_dict(proxy_raw)
 
-        external_raw = data.get("external")
-        external = None
-        if external_raw is not None:
-            if not isinstance(external_raw, dict):
-                raise ValueError("network.external must be a mapping")
-            external = ExternalNetworkConfig.from_dict(external_raw)
+        external_raw = data.get("external", {})
+        if not isinstance(external_raw, dict):
+            raise ValueError("network.external must be a mapping of physnet names to {cidr, gateway}")
+        external: dict[str, ExternalNetworkConfig] = {}
+        for physnet, net_data in external_raw.items():
+            if not isinstance(net_data, dict):
+                raise ValueError(f"network.external.{physnet} must be a mapping")
+            external[physnet] = ExternalNetworkConfig.from_dict(physnet, net_data)
 
         return cls(proxy=proxy, external=external)
 

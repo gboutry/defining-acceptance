@@ -31,10 +31,15 @@ network:
     # https: http://proxy.example.com:3128
     # no_proxy: "10.0.0.0/8,192.168.0.0/16,localhost,127.0.0.1"
   external:
-    # The OpenStack external (provider) network that floating IPs are allocated from.
-    name: external-net
-    cidr: 10.20.30.0/24
-    gateway: 10.20.30.1
+    # Map of physnet name -> {cidr, gateway}.
+    # Each entry describes one external (provider) network.
+    # The physnet name must match the bridge/bond mapped in each machine's external_networks.
+    external-net:
+      cidr: 10.20.30.0/24
+      gateway: 10.20.30.1
+    # restricted-net:
+    #   cidr: 10.30.40.0/24
+    #   gateway: 10.30.40.1
 
 # Features to enable after bootstrap.
 # Each entry corresponds to a sunbeam feature that will be activated in order.
