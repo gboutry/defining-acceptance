@@ -1,0 +1,89 @@
+# Canonical OpenStack Acceptance Test - Testbed Configuration
+# This file describes the target environment for acceptance tests.
+#
+# Copy this file to testbed.yaml and adjust to match your environment.
+# Fields marked as "Required" must be present; others are optional.
+
+deployment:
+  provider: manual          # Required. manual | maas
+  topology: multi-node      # Required. single-node | multi-node
+  channel: 2024.1/edge      # Required. Snap channel for the openstack snap
+  manifest: /home/ubuntu/manifest.yaml  # Optional: path to sunbeam manifest on the target machine
+  provisioned: false      # Optional (default: false). Set to true if the cloud is already
+                          # deployed — provisioning tests will be skipped.
+
+# Juju controller configuration.
+# Omit this section entirely to let sunbeam bootstrap and manage its own controller.
+juju:
+  external: false
+  # controller:             # Only needed when external: true
+  #   name: my-controller
+  #   endpoint: 10.0.0.1:17070
+  #   user: admin
+  #   password: secret
+
+# Network configuration
+network:
+  proxy:
+    enabled: false
+    # Uncomment and set if your environment requires an HTTP proxy.
+    # http: http://proxy.example.com:3128
+    # https: http://proxy.example.com:3128
+    # no_proxy: "10.0.0.0/8,192.168.0.0/16,localhost,127.0.0.1"
+  external:
+    # The OpenStack external (provider) network that floating IPs are allocated from.
+    name: external-net
+    cidr: 10.20.30.0/24
+    gateway: 10.20.30.1
+
+# Features to enable after bootstrap.
+# Each entry corresponds to a sunbeam feature that will be activated in order.
+features:
+  - secrets
+  - loadbalancer
+  # - caas
+
+# Machine definitions (required for provider: manual).
+# List every node that will be part of the deployment.
+# At least one machine must carry the "control" role for a valid multi-node topology.
+machines:
+  - hostname: bm0
+    ip: 10.0.0.10                 # Management / SSH reachable IP address
+    fqdn: bm0.example.com         # Fully-qualified domain name (used in Juju)
+    roles: [control, compute, storage]  # Roles this node fulfils
+    osd_devices: [/dev/sdb, /dev/sdc]   # Block devices dedicated to Ceph OSD (storage role only)
+    external_networks:
+      external: br-ex             # Linux bridge / bond interface mapped to the external network
+
+  - hostname: bm1
+    ip: 10.0.0.11
+    fqdn: bm1.example.com
+    roles: [compute, storage]
+    osd_devices: [/dev/sdb]
+    external_networks:
+      external: br-ex
+
+  - hostname: bm2
+    ip: 10.0.0.12
+    fqdn: bm2.example.com
+    roles: [compute, storage]
+    osd_devices: [/dev/sdb]
+    external_networks:
+      external: br-ex
+
+# MAAS configuration (only required when deployment.provider is "maas").
+# maas:
+#   endpoint: http://maas.internal:5240/MAAS
+#   api_key: "consumer-key:token-key:token-secret"
+#   # Optional: map OpenStack network roles to MAAS network spaces.
+#   network_spaces:
+#     management: mgmt-space
+#     storage: storage-space
+#     internal: internal-space
+
+# SSH credentials used by the test harness to connect to each machine.
+# The key pair must already be authorised on all target hosts.
+ssh:
+  user: ubuntu
+  private_key: ./ssh_private_key       # Path to the private key file (relative or absolute)
+  public_key: ./ssh_public_key.pub     # Path to the matching public key file
