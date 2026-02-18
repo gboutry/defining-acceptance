@@ -36,15 +36,27 @@ addopts = [
     "--capture=no",
 ]
 markers = [
+    # Test suite markers
     "security: marks tests as part of the security suite",
     "reliability: marks tests as part of the reliability suite",
     "operations: marks tests as part of the operations suite",
     "performance: marks tests as part of the performance suite",
     "provisioning: marks tests as part of the provisioning suite",
+    # Deployment topology / provider markers
     "maas: marks tests that require MAAS infrastructure",
-    "single-node: marks tests that require single-node deployment",
-    "external-juju: marks tests that require external Juju controller",
-    "three-node: marks tests that require 3-node deployment",
+    "single_node: marks tests for single-node deployment",
+    "single-node: marks tests for single-node deployment (gherkin alias)",
+    "multi_node: marks tests for multi-node deployment",
+    "multi-node: marks tests for multi-node deployment (gherkin alias)",
+    "external_juju: marks tests that require external Juju controller",
+    "external-juju: marks tests that require external Juju controller (gherkin alias)",
+    "three_node: marks tests that require 3+ node deployment",
+    "three-node: marks tests that require 3+ node deployment (gherkin alias)",
+    "proxy: marks tests that require proxy environment",
+    # Feature markers
+    "secrets: marks tests that require the secrets feature",
+    "caas: marks tests that require the CaaS feature",
+    "loadbalancer: marks tests that require the load balancer feature",
 ]
 
 [dependency-groups]
