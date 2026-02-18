@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+from pathlib import Path
 
 try:
     import allure as _allure
@@ -37,6 +38,17 @@ class ReportAdapter:
             return
 
         logger.info("ATTACH[%s] %s", name, text)
+
+    def attach_file(self, path: Path, name: str) -> None:
+        if _allure is not None:
+            _allure.attach.file(
+                str(path),
+                name=name,
+                attachment_type=_allure.attachment_type.TEXT,
+            )
+            return
+
+        logger.info("ATTACH_FILE[%s] %s", name, path)
 
     def label(self, name: str, value: str):
         if _allure is not None:

@@ -112,7 +112,7 @@ def run_prepare_node_script(sunbeam_client, testbed, prepare_node_result):
             command="mock", returncode=0, stdout="mock", stderr=""
         )
         return
-    result = sunbeam_client.prepare_node(testbed.primary_machine)
+    result = sunbeam_client.prepare_node(testbed.primary_machine, bootstrap=True)
     prepare_node_result["result"] = result
 
 
@@ -154,7 +154,7 @@ def node_prepared(sunbeam_client, testbed):
     """
     if MOCK_MODE:
         return
-    result = sunbeam_client.prepare_node(testbed.primary_machine)
+    result = sunbeam_client.prepare_node(testbed.primary_machine, bootstrap=True)
     assert result.succeeded or "already" in result.stdout.lower(), (
         f"prepare-node-script failed (rc={result.returncode})\n{result.stderr}"
     )

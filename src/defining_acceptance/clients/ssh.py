@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+import re
+import select
 import shlex
 import subprocess
 import time
+import uuid
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
@@ -46,12 +49,26 @@ class CommandError(Exception):
         )
 
 
+_SAFE_CHARS = re.compile(r"[^a-zA-Z0-9._-]")
+
+
 class SSHRunner:
     """Executes commands and transfers files on remote machines via SSH.
 
     A new SSH connection is opened for each operation and closed immediately
-    after. This avoids stale-connection problems during long-running test
-    sessions while keeping the implementation simple.
+    after.  stdout and stderr are streamed incrementally via ``select`` as
+    data arrives, so that long-running commands with large output never stall
+    waiting for the channel buffer to drain.
+
+    When *tmp_dir* is supplied, each command's output is also written to a
+    pair of persistent log files inside that directory::
+
+        <host>__<cmd_prefix>__<uid>__stdout.log
+        <host>__<cmd_prefix>__<uid>__stderr.log
+
+    The files survive the command and are useful for post-mortem analysis.
+    The caller is responsible for cleaning up *tmp_dir*; set ``KEEP_TMP=1``
+    in the environment as a signal to skip deletion.
 
     Example::
 
@@ -60,9 +77,15 @@ class SSHRunner:
         result.check()   # raises CommandError on non-zero exit
     """
 
-    def __init__(self, user: str, private_key_path: str | Path) -> None:
+    def __init__(
+        self,
+        user: str,
+        private_key_path: str | Path,
+        tmp_dir: Path | None = None,
+    ) -> None:
         self._user = user
         self._private_key_path = str(private_key_path)
+        self._tmp_dir = tmp_dir
 
     # ── Internal ──────────────────────────────────────────────────────────────
 
@@ -93,15 +116,18 @@ class SSHRunner:
     ) -> CommandResult:
         """Run a command on a remote host.
 
+        stdout and stderr are streamed incrementally using ``select`` so that
+        the SSH channel buffer never fills up regardless of how much output
+        the remote process produces.
+
         Args:
             hostname: IP address or resolvable hostname of the target machine.
-            command: Shell string or list of arguments. Lists are joined with
+            command: Shell string or list of arguments.  Lists are joined with
                 ``shlex.quote`` so they are safe to pass through the shell.
-            timeout: Maximum seconds to wait for the command to complete before
-                raising ``subprocess.TimeoutExpired``.
-            attach_output: When *True* (default), non-empty stdout and stderr
-                are attached to the current Allure report step as text
-                attachments.
+            timeout: Maximum seconds to wait for the command to complete.
+            attach_output: When *True* (default) and the command produces
+                non-empty output, attach it to the current Allure step (or
+                log it when Allure is not available).
 
         Returns:
             A :class:`CommandResult` with the exit code, stdout, and stderr.
@@ -114,6 +140,24 @@ class SSHRunner:
         else:
             command_str = command
 
+        # Optionally open persistent log files for this invocation.
+        stdout_path: Path | None = None
+        stderr_path: Path | None = None
+        stdout_file = None
+        stderr_file = None
+
+        if self._tmp_dir is not None:
+            uid = uuid.uuid4().hex[:8]
+            safe_host = _SAFE_CHARS.sub("_", hostname)
+            safe_cmd = _SAFE_CHARS.sub("_", command_str[:40]).strip("_")
+            stdout_path = self._tmp_dir / f"{safe_host}__{safe_cmd}__{uid}__stdout.log"
+            stderr_path = self._tmp_dir / f"{safe_host}__{safe_cmd}__{uid}__stderr.log"
+            stdout_file = stdout_path.open("w", encoding="utf-8", errors="replace")
+            stderr_file = stderr_path.open("w", encoding="utf-8", errors="replace")
+
+        stdout_chunks: list[str] = []
+        stderr_chunks: list[str] = []
+
         client = self._connect(hostname)
         try:
             _, stdout_chan, stderr_chan = client.exec_command(command_str)
@@ -124,13 +168,47 @@ class SSHRunner:
                 if time.monotonic() > deadline:
                     channel.close()
                     raise subprocess.TimeoutExpired(command_str, timeout)
-                time.sleep(0.2)
+
+                # Block up to 100 ms waiting for data; avoids a busy-loop.
+                rl, _, _ = select.select([channel], [], [], 0.1)
+                if rl:
+                    if channel.recv_ready():
+                        data = channel.recv(4096).decode("utf-8", errors="replace")
+                        stdout_chunks.append(data)
+                        if stdout_file:
+                            stdout_file.write(data)
+                            stdout_file.flush()
+                    if channel.recv_stderr_ready():
+                        data = channel.recv_stderr(4096).decode(
+                            "utf-8", errors="replace"
+                        )
+                        stderr_chunks.append(data)
+                        if stderr_file:
+                            stderr_file.write(data)
+                            stderr_file.flush()
+
+            # Drain any data that arrived between the last select and exit.
+            while channel.recv_ready():
+                data = channel.recv(4096).decode("utf-8", errors="replace")
+                stdout_chunks.append(data)
+                if stdout_file:
+                    stdout_file.write(data)
+            while channel.recv_stderr_ready():
+                data = channel.recv_stderr(4096).decode("utf-8", errors="replace")
+                stderr_chunks.append(data)
+                if stderr_file:
+                    stderr_file.write(data)
 
             returncode = channel.recv_exit_status()
-            stdout_text = stdout_chan.read().decode("utf-8", errors="replace")
-            stderr_text = stderr_chan.read().decode("utf-8", errors="replace")
         finally:
             client.close()
+            if stdout_file:
+                stdout_file.close()
+            if stderr_file:
+                stderr_file.close()
+
+        stdout_text = "".join(stdout_chunks)
+        stderr_text = "".join(stderr_chunks)
 
         result = CommandResult(
             command=command_str,
@@ -142,9 +220,15 @@ class SSHRunner:
         if attach_output:
             label = command_str[:80]
             if stdout_text.strip():
-                report.attach_text(stdout_text, f"stdout: {label}")
+                if stdout_path is not None:
+                    report.attach_file(stdout_path, f"stdout: {label}")
+                else:
+                    report.attach_text(stdout_text, f"stdout: {label}")
             if stderr_text.strip():
-                report.attach_text(stderr_text, f"stderr: {label}")
+                if stderr_path is not None:
+                    report.attach_file(stderr_path, f"stderr: {label}")
+                else:
+                    report.attach_text(stderr_text, f"stderr: {label}")
 
         return result
 

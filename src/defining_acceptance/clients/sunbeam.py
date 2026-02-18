@@ -31,12 +31,20 @@ class SunbeamClient:
             )
         return result
 
-    def prepare_node(self, machine: MachineConfig, timeout: int = 600) -> CommandResult:
+    def prepare_node(
+        self,
+        machine: MachineConfig,
+        bootstrap: bool = False,
+        timeout: int = 600,
+    ) -> CommandResult:
         """Run sunbeam prepare-node-script on the given machine."""
+        script_cmd = "sunbeam prepare-node-script"
+        if bootstrap:
+            script_cmd += " --bootstrap"
         with report.step(f"Prepare node {machine.hostname}"):
             result = self._ssh.run(
                 machine.ip,
-                "sunbeam prepare-node-script | bash -x",
+                f"{script_cmd} | bash -x",
                 timeout=timeout,
             )
         return result

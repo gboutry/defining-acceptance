@@ -1,5 +1,8 @@
 import os
+import shutil
+import tempfile
 from pathlib import Path
+from typing import Generator
 from unittest.mock import MagicMock
 
 import pytest
@@ -13,6 +16,9 @@ from defining_acceptance.testbed import MachineConfig, TestbedConfig
 
 # Set MOCK_MODE=1 to run tests without real infrastructure.
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
+
+# Set KEEP_TMP=1 to preserve the session temp directory after the run.
+KEEP_TMP = os.environ.get("KEEP_TMP", "0") == "1"
 
 _MOCK_TESTBED_DICT = {
     "machines": [
@@ -111,6 +117,22 @@ def pytest_addoption(parser):
 
 
 @pytest.fixture(scope="session")
+def session_tmp_dir() -> Generator[Path, None, None]:
+    """Session-scoped temp directory for command output logs.
+
+    Deleted automatically at session end unless ``KEEP_TMP=1`` is set.
+    """
+    tmp = Path(tempfile.mkdtemp(prefix="defining-acceptance-"))
+    try:
+        yield tmp
+    finally:
+        if KEEP_TMP:
+            print(f"\nSession tmp dir preserved: {tmp}", flush=True)
+        else:
+            shutil.rmtree(tmp, ignore_errors=True)
+
+
+@pytest.fixture(scope="session")
 def testbed(pytestconfig) -> TestbedConfig:
     """Parsed testbed configuration."""
     if MOCK_MODE:
@@ -142,7 +164,7 @@ def ssh_private_key_path(pytestconfig, testbed) -> str:
 
 
 @pytest.fixture(scope="session")
-def ssh_runner(testbed, ssh_private_key_path) -> SSHRunner:
+def ssh_runner(testbed, ssh_private_key_path, session_tmp_dir) -> SSHRunner:
     """SSHRunner configured for the testbed."""
     if MOCK_MODE:
         mock = MagicMock(spec=SSHRunner)
@@ -152,7 +174,9 @@ def ssh_runner(testbed, ssh_private_key_path) -> SSHRunner:
         mock.read_file.return_value = "mock-token"
         return mock
     user = (testbed.ssh.user if testbed.ssh else None) or "ubuntu"
-    return SSHRunner(user=user, private_key_path=ssh_private_key_path)
+    return SSHRunner(
+        user=user, private_key_path=ssh_private_key_path, tmp_dir=session_tmp_dir
+    )
 
 
 @pytest.fixture(scope="session")
@@ -203,7 +227,7 @@ def bootstrapped(testbed, sunbeam_client):
 
     with report.step(f"Bootstrapping cloud on {primary.hostname} ({primary.ip})"):
         sunbeam_client.install_snap(channel)
-        sunbeam_client.prepare_node(primary)
+        sunbeam_client.prepare_node(primary, bootstrap=True)
         sunbeam_client.bootstrap(
             role=_machine_role(primary, is_primary=True),
             manifest_path=manifest,
