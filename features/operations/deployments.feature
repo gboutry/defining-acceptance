@@ -12,6 +12,8 @@ Feature: OpenStack Service Deployments
     Given the feature "<feature>" is enabled
     When I run Tempest tests for the feature "<feature>"
     Then the Tempest run should pass successfully
+
+    Examples:
       | feature      |
       | secrets      |
       | caas         |
