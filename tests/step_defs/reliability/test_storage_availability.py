@@ -266,7 +266,7 @@ def osd_result() -> dict:
 @pytest.fixture
 @when("I stop the OSD daemons on one host")
 def stop_osd_on_host(testbed, ssh_runner, osd_result, request):
-    """Stop ceph-osd.target on a non-primary storage node; restart on cleanup."""
+    """Stop microceph.osd on a non-primary storage node; restart on cleanup."""
     if MOCK_MODE:
         osd_result.update({"stopped": True, "host": "mock-host"})
         return
@@ -276,9 +276,9 @@ def stop_osd_on_host(testbed, ssh_runner, osd_result, request):
         pytest.skip("No secondary storage nodes available to simulate OSD failure")
 
     target = storage_machines[0]
-    with report.step(f"Stopping ceph-osd.target on {target.hostname} ({target.ip})"):
+    with report.step(f"Stopping microceph.osd on {target.hostname} ({target.ip})"):
         ssh_runner.run(
-            target.ip, "sudo systemctl stop ceph-osd.target", attach_output=False
+            target.ip, "sudo snap stop microceph.osd", attach_output=False
         )
     osd_result.update({"host": target.hostname, "ip": target.ip, "stopped": True})
 
@@ -286,7 +286,7 @@ def stop_osd_on_host(testbed, ssh_runner, osd_result, request):
         with suppress(Exception):
             ssh_runner.run(
                 target.ip,
-                "sudo systemctl start ceph-osd.target",
+                "sudo snap restart microceph.osd",
                 attach_output=False,
             )
 
