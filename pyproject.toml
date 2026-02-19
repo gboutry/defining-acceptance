@@ -19,6 +19,7 @@ dependencies = [
 allure-report = "defining_acceptance:generate_allure_report"
 allure-serve = "defining_acceptance:serve_allure_report"
 allure-clean = "defining_acceptance:clean_allure_reports"
+to-upload = "defining_acceptance.deferred_upload:main"
 
 [build-system]
 requires = ["setuptools>=61"]

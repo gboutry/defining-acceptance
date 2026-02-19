@@ -30,7 +30,8 @@ import json
 import logging
 import os
 import platform
-from typing import Callable
+from pathlib import Path
+from typing import Any, Callable
 
 logger = logging.getLogger("defining_acceptance.observer")
 
@@ -51,26 +52,23 @@ def _detect_arch() -> str:
     return _ARCH_MAP.get(platform.machine(), platform.machine())
 
 
-class TestObserverPlugin:
-    """Pytest plugin that streams test results to the Test Observer API.
+class _BasePlugin:
+    """Base class with shared pytest hooks for Test Observer plugins.
 
-    One test execution is created per test category (plan tag) the first time
-    a result for that category arrives.  All executions are closed together at
-    session end.
+    Subclasses must implement :meth:`_ensure_category`, :meth:`_post_result`,
+    and :meth:`_close_category`.
     """
 
     def __init__(
         self,
-        client: object,
         make_body: Callable[[str], object],
         test_plan_prefix: str,
     ) -> None:
-        self._client = client
         # Callable(test_plan_name) -> StartSnapTestExecutionRequest
         self._make_body = make_body
         self._test_plan_prefix = test_plan_prefix
-        # category (capitalised) -> execution id
-        self._executions: dict[str, int] = {}
+        # category (capitalised) -> backend-specific key (e.g. execution id or Path)
+        self._executions: dict[str, Any] = {}
         # categories that had at least one failure (for final status)
         self._category_failed: set[str] = set()
         # pytest nodeids already reported (to avoid duplicate from setup+call)
@@ -98,8 +96,6 @@ class TestObserverPlugin:
         def _capture_file(path: object, name: str) -> None:
             _orig_file(path, name)
             try:
-                from pathlib import Path
-
                 text = Path(str(path)).read_text(encoding="utf-8", errors="replace")
                 if text.strip():
                     plugin._io_lines.append(f"### {name}\n{text}")
@@ -108,6 +104,23 @@ class TestObserverPlugin:
 
         _report.attach_text = _capture_text  # type: ignore[method-assign]
         _report.attach_file = _capture_file  # type: ignore[method-assign]
+
+    # ── Template methods ───────────────────────────────────────────────────────
+
+    def _ensure_category(self, category: str) -> Any | None:
+        """Return a backend key for *category*, creating one if needed.
+
+        Returns ``None`` on error.
+        """
+        raise NotImplementedError
+
+    def _post_result(self, key: Any, result: object) -> None:
+        """Post a single test result associated with *key*."""
+        raise NotImplementedError
+
+    def _close_category(self, category: str, key: Any, status: object) -> None:
+        """Close/finalise the execution associated with *key*."""
+        raise NotImplementedError
 
     # ── Pytest hooks ──────────────────────────────────────────────────────────
 
@@ -145,8 +158,8 @@ class TestObserverPlugin:
         if scenario := getattr(report, "scenario", None):
             name = scenario["name"]
 
-        execution_id = self._get_or_create_execution(category)
-        if execution_id is None:
+        key = self._ensure_category(category)
+        if key is None:
             return
 
         longrepr = getattr(report, "longrepr", None)
@@ -159,29 +172,25 @@ class TestObserverPlugin:
             if getattr(report, "failed", False):
                 self._settled.add(pytest_nodeid)
                 self._category_failed.add(category)
-                self._post(
-                    execution_id,
-                    [
-                        TestResultRequest(
-                            name=name,
-                            status=TestResultStatus.FAILED,
-                            category=category,
-                            io_log=io_log,
-                        )
-                    ],
+                self._post_result(
+                    key,
+                    TestResultRequest(
+                        name=name,
+                        status=TestResultStatus.FAILED,
+                        category=category,
+                        io_log=io_log,
+                    ),
                 )
             elif getattr(report, "skipped", False):
                 self._settled.add(pytest_nodeid)
-                self._post(
-                    execution_id,
-                    [
-                        TestResultRequest(
-                            name=name,
-                            status=TestResultStatus.SKIPPED,
-                            category=category,
-                            io_log=io_log,
-                        )
-                    ],
+                self._post_result(
+                    key,
+                    TestResultRequest(
+                        name=name,
+                        status=TestResultStatus.SKIPPED,
+                        category=category,
+                        io_log=io_log,
+                    ),
                 )
             # setup passed → wait for the call phase
 
@@ -195,32 +204,24 @@ class TestObserverPlugin:
                 self._category_failed.add(category)
             else:
                 status = TestResultStatus.SKIPPED
-            self._post(
-                execution_id,
-                [
-                    TestResultRequest(
-                        name=name,
-                        status=status,
-                        category=category,
-                        io_log=io_log,
-                    )
-                ],
+            self._post_result(
+                key,
+                TestResultRequest(
+                    name=name,
+                    status=status,
+                    category=category,
+                    io_log=io_log,
+                ),
             )
 
     def pytest_sessionfinish(self, session: object, exitstatus: int) -> None:
-        from defining_acceptance.clients.test_observer_client.api.test_executions import (
-            patch_test_execution_v1_test_executions_id_patch as patch_api,
-        )
         from defining_acceptance.clients.test_observer_client.models.test_execution_status import (
             TestExecutionStatus,
-        )
-        from defining_acceptance.clients.test_observer_client.models.test_executions_patch_request import (
-            TestExecutionsPatchRequest,
         )
 
         interrupted = exitstatus == 2  # keyboard interrupt
 
-        for category, execution_id in self._executions.items():
+        for category, key in self._executions.items():
             if interrupted:
                 status = TestExecutionStatus.ENDED_PREMATURELY
             elif category in self._category_failed:
@@ -228,29 +229,29 @@ class TestObserverPlugin:
             else:
                 status = TestExecutionStatus.PASSED
 
-            try:
-                patch_api.sync(
-                    execution_id,
-                    client=self._client,
-                    body=TestExecutionsPatchRequest(status=status),
-                )
-                logger.info(
-                    "Test Observer: closed execution id=%d (category=%r) status=%s",
-                    execution_id,
-                    category,
-                    status.value,
-                )
-            except Exception:
-                logger.warning(
-                    "Failed to close Test Observer execution %d (category=%r)",
-                    execution_id,
-                    category,
-                    exc_info=True,
-                )
+            self._close_category(category, key, status)
 
-    # ── Internal ──────────────────────────────────────────────────────────────
 
-    def _get_or_create_execution(self, category: str) -> int | None:
+class TestObserverPlugin(_BasePlugin):
+    """Pytest plugin that streams test results to the Test Observer API.
+
+    One test execution is created per test category (plan tag) the first time
+    a result for that category arrives.  All executions are closed together at
+    session end.
+    """
+
+    def __init__(
+        self,
+        client: object,
+        make_body: Callable[[str], object],
+        test_plan_prefix: str,
+    ) -> None:
+        super().__init__(make_body=make_body, test_plan_prefix=test_plan_prefix)
+        self._client = client
+
+    # ── Template method implementations ───────────────────────────────────────
+
+    def _ensure_category(self, category: str) -> int | None:
         """Return the execution id for *category*, creating one if needed."""
         if category in self._executions:
             return self._executions[category]
@@ -302,33 +303,145 @@ class TestObserverPlugin:
         )
         return execution_id
 
-    def _post(self, execution_id: int, results: list) -> None:
+    def _post_result(self, execution_id: int, result: object) -> None:
         from defining_acceptance.clients.test_observer_client.api.test_executions import (
             post_results_v1_test_executions_id_test_results_post as post_api,
         )
 
         try:
-            post_api.sync(execution_id, client=self._client, body=results)
+            post_api.sync(execution_id, client=self._client, body=[result])
         except Exception:
-            names = ", ".join(r.name for r in results)
-            logger.warning("Failed to post result(s) for %s", names, exc_info=True)
+            name = getattr(result, "name", repr(result))
+            logger.warning("Failed to post result(s) for %s", name, exc_info=True)
+
+    def _close_category(self, category: str, execution_id: int, status: object) -> None:
+        from defining_acceptance.clients.test_observer_client.api.test_executions import (
+            patch_test_execution_v1_test_executions_id_patch as patch_api,
+        )
+        from defining_acceptance.clients.test_observer_client.models.test_executions_patch_request import (
+            TestExecutionsPatchRequest,
+        )
+
+        try:
+            patch_api.sync(
+                execution_id,
+                client=self._client,
+                body=TestExecutionsPatchRequest(status=status),
+            )
+            logger.info(
+                "Test Observer: closed execution id=%d (category=%r) status=%s",
+                execution_id,
+                category,
+                status.value,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to close Test Observer execution %d (category=%r)",
+                execution_id,
+                category,
+                exc_info=True,
+            )
 
 
-def create_plugin() -> TestObserverPlugin | None:
-    """Build a :class:`TestObserverPlugin` from environment variables.
+class DeferredPlugin(_BasePlugin):
+    """Pytest plugin that writes test results to disk for later upload.
+
+    One subdirectory is created per test category.  Each subdirectory contains:
+    - ``start.json``   — the request body that would be sent to start-test
+    - ``results.jsonl`` — one JSON object per line, one per test result
+    - ``patch.json``   — the PATCH request body to close the execution
+    """
+
+    def __init__(
+        self,
+        output_dir: Path,
+        make_body: Callable[[str], object],
+        test_plan_prefix: str,
+    ) -> None:
+        super().__init__(make_body=make_body, test_plan_prefix=test_plan_prefix)
+        self._output_dir = output_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+
+    # ── Template method implementations ───────────────────────────────────────
+
+    def _ensure_category(self, category: str) -> Path | None:
+        """Return the category directory for *category*, creating it if needed."""
+        if category in self._executions:
+            return self._executions[category]
+
+        test_plan = f"{self._test_plan_prefix}-{category.lower()}"
+        cat_dir = self._output_dir / category.lower()
+        try:
+            cat_dir.mkdir(parents=True, exist_ok=True)
+            start_data = self._make_body(test_plan).to_dict()
+            (cat_dir / "start.json").write_text(
+                json.dumps(start_data, indent=2), encoding="utf-8"
+            )
+        except Exception:
+            logger.warning(
+                "Failed to initialise deferred directory for category %r",
+                category,
+                exc_info=True,
+            )
+            return None
+
+        self._executions[category] = cat_dir
+        logger.info(
+            "Deferred: initialised category %r at %s",
+            category,
+            cat_dir,
+        )
+        return cat_dir
+
+    def _post_result(self, cat_dir: Path, result: object) -> None:
+        try:
+            with (cat_dir / "results.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(result.to_dict()) + "\n")
+        except Exception:
+            name = getattr(result, "name", repr(result))
+            logger.warning(
+                "Failed to write deferred result for %s", name, exc_info=True
+            )
+
+    def _close_category(self, category: str, cat_dir: Path, status: object) -> None:
+        from defining_acceptance.clients.test_observer_client.models.test_executions_patch_request import (
+            TestExecutionsPatchRequest,
+        )
+
+        try:
+            patch_body = TestExecutionsPatchRequest(status=status)
+            (cat_dir / "patch.json").write_text(
+                json.dumps(patch_body.to_dict(), indent=2), encoding="utf-8"
+            )
+            logger.info(
+                "Deferred: wrote patch.json for category %r status=%s",
+                category,
+                status.value,
+            )
+        except Exception:
+            logger.warning(
+                "Failed to write deferred patch.json for category %r",
+                category,
+                exc_info=True,
+            )
+
+
+def create_plugin() -> TestObserverPlugin | DeferredPlugin | None:
+    """Build a plugin from environment variables.
 
     Returns ``None`` (silently) when ``TO_URL`` is not set, or logs a warning
     and returns ``None`` when required variables are missing.
 
-    No network call is made here; executions are created lazily on first use
-    per category.
+    When ``TO_URL`` starts with ``file://``, a :class:`DeferredPlugin` is
+    returned that writes results to disk for later upload via ``to-upload``.
+    No network call is made in either case at plugin creation time; executions
+    are created lazily on first use per category.
     """
     to_url = os.environ.get("TO_URL")
     if not to_url:
         return None
 
     try:
-        from defining_acceptance.clients.test_observer_client import Client
         from defining_acceptance.clients.test_observer_client.models.snap_stage import (
             SnapStage,
         )
@@ -381,7 +494,6 @@ def create_plugin() -> TestObserverPlugin | None:
     test_plan_prefix = os.environ.get("TO_TEST_PLAN", "sunbeam-acceptance")
     arch = os.environ.get("TO_ARCH") or _detect_arch()
     ci_link = os.environ.get("TO_CI_LINK") or None
-    ci_link = "http://myci.com/job/125"
     relevant_links = (
         [TestExecutionRelevantLinkCreate(label="CI job", url=ci_link)]
         if ci_link
@@ -389,6 +501,7 @@ def create_plugin() -> TestObserverPlugin | None:
     )
 
     def make_body(test_plan: str) -> StartSnapTestExecutionRequest:
+        local_ci_link = ci_link + "#" + test_plan if ci_link else UNSET
         return StartSnapTestExecutionRequest(
             name=snap_name,
             version=snap_version,
@@ -402,16 +515,31 @@ def create_plugin() -> TestObserverPlugin | None:
             track=snap_track,
             store=snap_store,
             execution_stage=snap_stage,
-            ci_link=ci_link + "#" + test_plan or UNSET,
+            ci_link=local_ci_link,
         )
 
-    client = Client(base_url=to_url)
-    logger.info(
-        "Test Observer: configured, executions will be created per category at %s",
-        to_url,
-    )
-    return TestObserverPlugin(
-        client=client,
-        make_body=make_body,
-        test_plan_prefix=test_plan_prefix,
-    )
+    if to_url.startswith("file://"):
+        output_dir = Path(to_url[len("file://"):])
+        output_dir.mkdir(parents=True, exist_ok=True)
+        logger.info(
+            "Test Observer: deferred mode, results will be written to %s",
+            output_dir,
+        )
+        return DeferredPlugin(
+            output_dir=output_dir,
+            make_body=make_body,
+            test_plan_prefix=test_plan_prefix,
+        )
+    else:
+        from defining_acceptance.clients.test_observer_client import Client
+
+        client = Client(base_url=to_url)
+        logger.info(
+            "Test Observer: configured, executions will be created per category at %s",
+            to_url,
+        )
+        return TestObserverPlugin(
+            client=client,
+            make_body=make_body,
+            test_plan_prefix=test_plan_prefix,
+        )
