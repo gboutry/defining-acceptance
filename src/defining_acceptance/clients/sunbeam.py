@@ -12,12 +12,13 @@ from defining_acceptance.testbed import MachineConfig
 class SunbeamClient:
     """Execute sunbeam CLI commands on a remote machine via SSH."""
 
-    def __init__(self, ssh: SSHRunner, primary: MachineConfig) -> None:
+    def __init__(self, ssh: SSHRunner) -> None:
         self._ssh = ssh
-        self._primary = primary
 
-    def install_snap(self, channel: str, timeout: int = 600) -> CommandResult:
-        """Install the openstack snap on the primary machine.
+    def install_snap(
+        self, machine: MachineConfig, channel: str, timeout: int = 600
+    ) -> CommandResult:
+        """Install the openstack snap on the given machine.
 
         Does not call .check() because the snap may already be installed,
         in which case snap returns a non-zero exit code with "already installed"
@@ -25,7 +26,7 @@ class SunbeamClient:
         """
         with report.step(f"Install openstack snap from channel {channel!r}"):
             result = self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 f"sudo snap install openstack --channel {channel}",
                 timeout=timeout,
             )
@@ -51,6 +52,7 @@ class SunbeamClient:
 
     def bootstrap(
         self,
+        machine: MachineConfig,
         role: str,
         manifest_path: str | None = None,
         timeout: int = 3600,
@@ -61,7 +63,7 @@ class SunbeamClient:
             command = f"{command} --manifest {manifest_path}"
         with report.step(f"Bootstrap sunbeam cluster with role {role!r}"):
             result = self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 command,
                 timeout=timeout,
             )
@@ -69,12 +71,12 @@ class SunbeamClient:
         return result
 
     def configure(
-        self, openrc: str = "demo-openrc", timeout: int = 900
+        self, machine: MachineConfig, openrc: str = "demo-openrc", timeout: int = 900
     ) -> CommandResult:
         """Configure the sunbeam deployment."""
         with report.step("Configure sunbeam deployment"):
             result = self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 f"sunbeam configure --accept-defaults --openrc {openrc}",
                 timeout=timeout,
             )
@@ -82,7 +84,7 @@ class SunbeamClient:
         return result
 
     def generate_join_token(
-        self, fqdn: str, token_path: str, timeout: int = 300
+        self, machine: MachineConfig, fqdn: str, token_path: str, timeout: int = 300
     ) -> str:
         """Generate a join token for the given machine FQDN.
 
@@ -91,12 +93,12 @@ class SunbeamClient:
         """
         with report.step(f"Generate join token for {fqdn!r}"):
             result = self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 f"sunbeam cluster add {fqdn} -o {token_path}",
                 timeout=timeout,
             )
             result.check()
-            token = self._ssh.read_file(self._primary.ip, token_path)
+            token = self._ssh.read_file(machine.ip, token_path)
         return token.strip()
 
     def join(
@@ -116,22 +118,26 @@ class SunbeamClient:
             result.check()
         return result
 
-    def enable(self, feature: str, timeout: int = 600) -> CommandResult:
+    def enable(
+        self, machine: MachineConfig, feature: str, timeout: int = 600
+    ) -> CommandResult:
         """Enable a sunbeam feature."""
         with report.step(f"Enable sunbeam feature {feature!r}"):
             result = self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 f"sunbeam enable {feature}",
                 timeout=timeout,
             )
             result.check()
         return result
 
-    def cluster_status(self, timeout: int = 60) -> CommandResult:
+    def cluster_status(
+        self, machine: MachineConfig, timeout: int = 60
+    ) -> CommandResult:
         """Return the current cluster status without raising on failure."""
         with report.step("Get cluster status"):
             result = self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 "sunbeam cluster status",
                 timeout=timeout,
             )
@@ -141,6 +147,7 @@ class SunbeamClient:
 
     def add_maas_provider(
         self,
+        machine: MachineConfig,
         endpoint: str,
         api_key: str,
         timeout: int = 120,
@@ -148,13 +155,14 @@ class SunbeamClient:
         """Register a MAAS provider with Sunbeam."""
         with report.step(f"Add MAAS provider at {endpoint!r}"):
             return self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 f"sunbeam provider add maas --endpoint {endpoint} --api-key {api_key}",
                 timeout=timeout,
             ).check()
 
     def map_maas_network_space(
         self,
+        machine: MachineConfig,
         space: str,
         network: str,
         timeout: int = 60,
@@ -162,22 +170,25 @@ class SunbeamClient:
         """Map a MAAS network space to a Sunbeam network."""
         with report.step(f"Map MAAS space {space!r} to network {network!r}"):
             return self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 f"sunbeam provider maas map-space --space {space} --network {network}",
                 timeout=timeout,
             ).check()
 
-    def bootstrap_juju_controller(self, timeout: int = 3600) -> CommandResult:
+    def bootstrap_juju_controller(
+        self, machine: MachineConfig, timeout: int = 3600
+    ) -> CommandResult:
         """Bootstrap the Juju controller on the MAAS provider."""
         with report.step("Bootstrap Juju controller via MAAS"):
             return self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 "sunbeam controller bootstrap",
                 timeout=timeout,
             ).check()
 
     def deploy_cloud(
         self,
+        machine: MachineConfig,
         manifest_path: str | None = None,
         timeout: int = 7200,
     ) -> CommandResult:
@@ -187,7 +198,7 @@ class SunbeamClient:
             cmd += f" --manifest {manifest_path}"
         with report.step("Deploy OpenStack cloud"):
             return self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 cmd,
                 timeout=timeout,
             ).check()
@@ -196,6 +207,7 @@ class SunbeamClient:
 
     def register_juju_controller(
         self,
+        machine: MachineConfig,
         endpoint: str,
         user: str,
         password: str,
@@ -213,13 +225,14 @@ class SunbeamClient:
             cmd += f" --name {name}"
         with report.step(f"Register external Juju controller at {endpoint!r}"):
             return self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 cmd,
                 timeout=timeout,
             ).check()
 
     def bootstrap_with_controller(
         self,
+        machine: MachineConfig,
         controller_name: str,
         role: str,
         manifest_path: str | None = None,
@@ -235,12 +248,12 @@ class SunbeamClient:
             cmd += f" --manifest {manifest_path}"
         with report.step(f"Bootstrap with external controller {controller_name!r}"):
             return self._ssh.run(
-                self._primary.ip,
+                machine.ip,
                 cmd,
                 timeout=timeout,
             ).check()
 
-    def wait_for_ready(self, timeout: int = 600) -> None:
+    def wait_for_ready(self, machine: MachineConfig, timeout: int = 600) -> None:
         """Poll cluster status until it reports ready or the timeout is reached.
 
         Raises:
@@ -250,7 +263,7 @@ class SunbeamClient:
         deadline = time.monotonic() + timeout
         with report.step(f"Wait for cluster to be ready (timeout={timeout}s)"):
             while True:
-                result = self.cluster_status()
+                result = self.cluster_status(machine)
                 if "ready" in result.stdout.lower():
                     return
                 remaining = deadline - time.monotonic()

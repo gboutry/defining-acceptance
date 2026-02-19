@@ -113,6 +113,7 @@ def register_external_juju(testbed, sunbeam_client, register_result):
         return
     ctrl = testbed.juju.controller
     result: CommandResult = sunbeam_client.register_juju_controller(
+        testbed.primary_machine,
         endpoint=ctrl.endpoint,
         user=ctrl.user,
         password=ctrl.password,
@@ -155,6 +156,7 @@ def external_juju_registered(testbed, sunbeam_client):
         return
     ctrl = testbed.juju.controller
     result = sunbeam_client.register_juju_controller(
+        testbed.primary_machine,
         endpoint=ctrl.endpoint,
         user=ctrl.user,
         password=ctrl.password,
@@ -182,6 +184,7 @@ def bootstrap_with_external_controller(testbed, sunbeam_client, ext_bootstrap_re
     manifest = testbed.deployment.manifest if testbed.deployment else None
 
     result: CommandResult = sunbeam_client.bootstrap_with_controller(
+        testbed.primary_machine,
         controller_name=ctrl.name,
         role=role,
         manifest_path=manifest,
@@ -212,7 +215,7 @@ def verify_services_via_external(sunbeam_client, testbed, ssh_runner):
     if MOCK_MODE:
         return
     with report.step("Waiting for cluster to become ready"):
-        sunbeam_client.wait_for_ready(timeout=1800)
+        sunbeam_client.wait_for_ready(testbed.primary_machine, timeout=1800)
 
     ctrl_name = testbed.juju.controller.name
     primary_ip = testbed.primary_machine.ip

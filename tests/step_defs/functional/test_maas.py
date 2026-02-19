@@ -100,6 +100,7 @@ def add_maas_provider(testbed, sunbeam_client, maas_provider_result):
         maas_provider_result["success"] = True
         return
     result: CommandResult = sunbeam_client.add_maas_provider(
+        testbed.primary_machine,
         endpoint=testbed.maas.endpoint,
         api_key=testbed.maas.api_key,
     )
@@ -135,6 +136,7 @@ def maas_provider_configured(testbed, sunbeam_client, ssh_runner):
     if MOCK_MODE:
         return
     result = sunbeam_client.add_maas_provider(
+        testbed.primary_machine,
         endpoint=testbed.maas.endpoint,
         api_key=testbed.maas.api_key,
     )
@@ -167,7 +169,9 @@ def map_network_spaces(testbed, sunbeam_client, spaces_result):
     for network, space in mappings.items():
         if space:
             with report.step(f"Mapping space {space!r} → network {network!r}"):
-                sunbeam_client.map_maas_network_space(space=space, network=network)
+                sunbeam_client.map_maas_network_space(
+                    testbed.primary_machine, space=space, network=network
+                )
 
     spaces_result["success"] = True
 
@@ -209,7 +213,9 @@ def network_spaces_mapped(testbed, sunbeam_client):
         ("internal", spaces.internal),
     ]:
         if space:
-            sunbeam_client.map_maas_network_space(space=space, network=network)
+            sunbeam_client.map_maas_network_space(
+                testbed.primary_machine, space=space, network=network
+            )
 
 
 @pytest.fixture
@@ -218,12 +224,12 @@ def bootstrap_result() -> dict:
 
 
 @when("I bootstrap the orchestration layer")
-def bootstrap_orchestration(sunbeam_client, bootstrap_result):
+def bootstrap_orchestration(testbed, sunbeam_client, bootstrap_result):
     """Bootstrap the Juju controller on the MAAS substrate."""
     if MOCK_MODE:
         bootstrap_result["juju_ok"] = True
         return
-    result = sunbeam_client.bootstrap_juju_controller()
+    result = sunbeam_client.bootstrap_juju_controller(testbed.primary_machine)
     bootstrap_result["juju_ok"] = result.succeeded
 
 
@@ -258,16 +264,18 @@ def deploy_cloud(testbed, sunbeam_client, deploy_result):
         deploy_result["success"] = True
         return
     manifest = testbed.deployment.manifest if testbed.deployment else None
-    result = sunbeam_client.deploy_cloud(manifest_path=manifest)
+    result = sunbeam_client.deploy_cloud(
+        testbed.primary_machine, manifest_path=manifest
+    )
     deploy_result["success"] = result.succeeded
 
 
 @then("all control plane services should be running")
-def verify_services_running(deploy_result, sunbeam_client):
+def verify_services_running(deploy_result, testbed, sunbeam_client):
     """Wait for the cluster to report ready and verify all services are up."""
     if MOCK_MODE:
         return
     assert deploy_result["success"], "Cloud deployment failed"
     with report.step("Waiting for cluster to become ready"):
-        sunbeam_client.wait_for_ready(timeout=1800)
+        sunbeam_client.wait_for_ready(testbed.primary_machine, timeout=1800)
     report.note("All control plane services are running")

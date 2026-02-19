@@ -173,13 +173,15 @@ def bootstrap_cloud(sunbeam_client, testbed, bootstrap_result):
     role = ",".join(machine.roles) if machine.roles else "control,compute,storage"
     manifest = testbed.deployment.manifest if testbed.deployment else None
 
-    result = sunbeam_client.bootstrap(role=role, manifest_path=manifest)
+    result = sunbeam_client.bootstrap(
+        testbed.primary_machine, role=role, manifest_path=manifest
+    )
     bootstrap_result["result"] = result
     bootstrap_result["role"] = role
 
 
 @then("the cloud should be bootstrapped successfully")
-def verify_cloud_bootstrapped(sunbeam_client, bootstrap_result):
+def verify_cloud_bootstrapped(sunbeam_client, testbed, bootstrap_result):
     """Verify the bootstrap command exited cleanly and the cluster reports ready."""
     if MOCK_MODE:
         return
@@ -187,15 +189,15 @@ def verify_cloud_bootstrapped(sunbeam_client, bootstrap_result):
     assert result.succeeded, (
         f"Bootstrap failed (rc={result.returncode})\nstderr: {result.stderr}"
     )
-    sunbeam_client.wait_for_ready(timeout=600)
+    sunbeam_client.wait_for_ready(testbed.primary_machine, timeout=600)
 
 
 @then("the cloud should have control, compute, and storage roles")
-def verify_roles(sunbeam_client):
+def verify_roles(sunbeam_client, testbed):
     """Verify the cluster status output lists all expected roles."""
     if MOCK_MODE:
         return
-    status = sunbeam_client.cluster_status()
+    status = sunbeam_client.cluster_status(testbed.primary_machine)
     for role in ("control", "compute", "storage"):
         assert role in status.stdout.lower(), (
             f"Role '{role}' not found in cluster status output:\n{status.stdout}"

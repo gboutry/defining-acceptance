@@ -202,7 +202,13 @@ def sunbeam_client(ssh_runner: SSHRunner, testbed: TestbedConfig) -> SunbeamClie
     """SunbeamClient bound to the primary control machine."""
     if MOCK_MODE:
         return MagicMock(spec=SunbeamClient)
-    return SunbeamClient(ssh=ssh_runner, primary=testbed.primary_machine)
+    return SunbeamClient(ssh=ssh_runner)
+
+
+@pytest.fixture(scope="session")
+def primary_machine(testbed: TestbedConfig) -> MachineConfig:
+    """The primary control machine from the testbed configuration."""
+    return testbed.primary_machine
 
 
 @pytest.fixture(scope="session")
@@ -244,20 +250,21 @@ def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
     primary = testbed.primary_machine
 
     with report.step(f"Bootstrapping cloud on {primary.hostname} ({primary.ip})"):
-        sunbeam_client.install_snap(channel)
+        sunbeam_client.install_snap(primary, channel)
         sunbeam_client.prepare_node(primary, bootstrap=True)
         sunbeam_client.bootstrap(
+            primary,
             role=_machine_role(primary, is_primary=True),
             manifest_path=manifest,
         )
-        sunbeam_client.configure()
+        sunbeam_client.configure(primary)
 
         for machine in testbed.machines[1:]:
-            sunbeam_client.install_snap(channel)
+            sunbeam_client.install_snap(machine, channel)
             sunbeam_client.prepare_node(machine)
             fqdn = machine.fqdn or machine.hostname
             token_path = f"/home/ubuntu/{fqdn}.token"
-            token = sunbeam_client.generate_join_token(fqdn, token_path)
+            token = sunbeam_client.generate_join_token(primary, fqdn, token_path)
             sunbeam_client.join(
                 machine=machine,
                 role=_machine_role(machine, is_primary=False),
@@ -276,7 +283,7 @@ _FEATURE_DEPS: dict[str, list[str]] = {
 
 @pytest.fixture(scope="session")
 def enable_feature(
-    bootstrapped: None, sunbeam_client: SunbeamClient
+    bootstrapped: None, sunbeam_client: SunbeamClient, primary_machine: MachineConfig
 ) -> typing.Callable[[str], None]:
     """Return a callable that enables a named Sunbeam feature (with its deps)."""
 
@@ -291,7 +298,7 @@ def enable_feature(
             return
         for dep in _FEATURE_DEPS.get(name, []):
             _enable(dep)
-        sunbeam_client.enable(name)
+        sunbeam_client.enable(primary_machine, name)
         enabled.add(name)
 
     return _enable
