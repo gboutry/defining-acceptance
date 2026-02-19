@@ -75,6 +75,7 @@ class _BasePlugin:
         self._io_lines: list[str] = []
         # category for the currently running item (set from pytest markers)
         self._current_category: str = ""
+        self._current_key: Any = None
 
         # Intercept report.attach_text / attach_file so every command output
         # that SSHRunner emits is also captured into _io_lines for io_log.
@@ -120,18 +121,44 @@ class _BasePlugin:
         """Close/finalise the execution associated with *key*."""
         raise NotImplementedError
 
+    def _post_status_update(self, key: Any, detail: str, timestamp: object) -> None:
+        """Post a step-level status update event."""
+        raise NotImplementedError
+
     # ── Pytest hooks ──────────────────────────────────────────────────────────
 
     def pytest_runtest_setup(self, item: object) -> None:
-        """Reset per-test state and extract the category from pytest markers."""
+        """Reset per-test state, extract category, and register the step hook."""
+        # Always clear state from the previous test first.
         self._io_lines = []
         self._current_category = ""
+        self._current_key = None
+        from defining_acceptance.reporting import report as _report
+
+        _report.set_status_update_fn(None)
+
         get_marker = getattr(item, "get_closest_marker", None)
-        if get_marker is not None:
-            for tag in _PLAN_TAGS:
-                if get_marker(tag) is not None:
-                    self._current_category = tag.capitalize()
-                    break
+        if get_marker is None:
+            return
+        for tag in _PLAN_TAGS:
+            if get_marker(tag) is not None:
+                self._current_category = tag.capitalize()
+                break
+
+        if not self._current_category:
+            return
+
+        key = self._ensure_category(self._current_category)
+        if key is None:
+            return
+        self._current_key = key
+
+        plugin = self
+
+        def _on_step(detail: str, timestamp: object) -> None:
+            plugin._post_status_update(key, detail, timestamp)
+
+        _report.set_status_update_fn(_on_step)
 
     def pytest_runtest_logreport(self, report: object) -> None:
         from defining_acceptance.clients.test_observer_client.models.test_result_request import (
@@ -156,7 +183,7 @@ class _BasePlugin:
         if scenario := getattr(report, "scenario", None):
             name = scenario["name"]
 
-        key = self._ensure_category(category)
+        key = self._current_key
         if key is None:
             return
 
@@ -340,6 +367,41 @@ class TestObserverPlugin(_BasePlugin):
                 exc_info=True,
             )
 
+    def _post_status_update(
+        self, execution_id: int, detail: str, timestamp: object
+    ) -> None:
+        from defining_acceptance.clients.test_observer_client.api.test_executions import (
+            post_status_update_v1_test_executions_id_status_update_post as status_api,
+        )
+        from defining_acceptance.clients.test_observer_client.models.status_update_request import (
+            StatusUpdateRequest,
+        )
+        from defining_acceptance.clients.test_observer_client.models.test_event_response import (
+            TestEventResponse,
+        )
+
+        try:
+            status_api.sync(
+                execution_id,
+                client=self._client,
+                body=StatusUpdateRequest(
+                    events=[
+                        TestEventResponse(
+                            event_name="step",
+                            timestamp=timestamp,
+                            detail=detail,
+                        )
+                    ]
+                ),
+            )
+        except Exception:
+            logger.warning(
+                "Failed to post status update %r for execution %d",
+                detail,
+                execution_id,
+                exc_info=True,
+            )
+
 
 class DeferredPlugin(_BasePlugin):
     """Pytest plugin that writes test results to disk for later upload.
@@ -421,6 +483,24 @@ class DeferredPlugin(_BasePlugin):
                 "Failed to write deferred patch.json for category %r",
                 category,
                 exc_info=True,
+            )
+
+    def _post_status_update(
+        self, cat_dir: Path, detail: str, timestamp: object
+    ) -> None:
+        try:
+            entry = {
+                "event_name": "step",
+                "timestamp": timestamp.isoformat()
+                if hasattr(timestamp, "isoformat")
+                else str(timestamp),
+                "detail": detail,
+            }
+            with (cat_dir / "status_updates.jsonl").open("a", encoding="utf-8") as fh:
+                fh.write(json.dumps(entry) + "\n")
+        except Exception:
+            logger.warning(
+                "Failed to write deferred status update %r", detail, exc_info=True
             )
 
 

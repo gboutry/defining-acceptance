@@ -91,6 +91,41 @@ def upload(deferred_dir: Path, to_url: str) -> int:
                     "Failed to post results for %s", cat_dir.name, exc_info=True
                 )
 
+        # 2b. Post status updates
+        from defining_acceptance.clients.test_observer_client.api.test_executions import (
+            post_status_update_v1_test_executions_id_status_update_post as status_api,
+        )
+        from defining_acceptance.clients.test_observer_client.models.status_update_request import (
+            StatusUpdateRequest,
+        )
+        from defining_acceptance.clients.test_observer_client.models.test_event_response import (
+            TestEventResponse,
+        )
+
+        status_file = cat_dir / "status_updates.jsonl"
+        if status_file.exists():
+            try:
+                events = [
+                    TestEventResponse.from_dict(json.loads(line))
+                    for line in status_file.read_text().splitlines()
+                    if line.strip()
+                ]
+                if events:
+                    status_api.sync(
+                        execution_id,
+                        client=client,
+                        body=StatusUpdateRequest(events=events),
+                    )
+                    logger.info(
+                        "Posted %d status update(s) for %s",
+                        len(events),
+                        cat_dir.name,
+                    )
+            except Exception:
+                logger.error(
+                    "Failed to post status updates for %s", cat_dir.name, exc_info=True
+                )
+
         # 3. Close execution
         patch_file = cat_dir / "patch.json"
         if patch_file.exists():

@@ -8,7 +8,6 @@ authors = [
 ]
 requires-python = ">=3.12"
 dependencies = [
-    "allure-pytest>=2.15.3",
     "paramiko>=3.5.1",
     "pytest>=9.0.2",
     "pytest-bdd>=8.1.0",
@@ -16,9 +15,6 @@ dependencies = [
 ]
 
 [project.scripts]
-allure-report = "defining_acceptance:generate_allure_report"
-allure-serve = "defining_acceptance:serve_allure_report"
-allure-clean = "defining_acceptance:clean_allure_reports"
 to-upload = "defining_acceptance.deferred_upload:main"
 
 [build-system]
@@ -28,7 +24,6 @@ build-backend = "setuptools.build_meta"
 [tool.pytest]
 bdd_features_base_dir = "features/"
 addopts = [
-    "--alluredir=reports/allure-results",
     "-v",
     "--tb=short",
     "--strict-markers",

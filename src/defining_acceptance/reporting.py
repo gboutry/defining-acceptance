@@ -2,73 +2,49 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+from datetime import datetime
 from pathlib import Path
-
-try:
-    import allure as _allure
-except Exception:  # pragma: no cover - optional backend
-    _allure = None
-
+from typing import Callable
 
 logger = logging.getLogger("defining_acceptance.reporting")
 
 
 class ReportAdapter:
+    def __init__(self) -> None:
+        self._status_update_fn: Callable[[str, datetime], None] | None = None
+
+    def set_status_update_fn(self, fn: Callable[[str, datetime], None] | None) -> None:
+        """Register a callback invoked on step enter/exit with (detail, timestamp).
+
+        Pass ``None`` to disable (fall back to logging).
+        """
+        self._status_update_fn = fn
+
     @contextmanager
     def step(self, title: str):
-        if _allure is not None:
-            with _allure.step(title):
-                yield
-            return
+        ts = datetime.now()
+        if self._status_update_fn is not None:
+            self._status_update_fn(f"{title} - start", ts)
+        else:
+            logger.info("STEP[start]: %s", title)
+        try:
+            yield
+        finally:
+            ts = datetime.now()
+            if self._status_update_fn is not None:
+                self._status_update_fn(f"{title} - end", ts)
+            else:
+                logger.info("STEP[end]: %s", title)
 
-        logger.info("STEP: %s", title)
-        yield
-
-    def note(self, message: str):
+    def note(self, message: str) -> None:
         logger.info(message)
 
-    def attach_text(self, content: str, name: str):
+    def attach_text(self, content: str, name: str) -> None:
         text = "" if content is None else str(content)
-        if _allure is not None:
-            _allure.attach(
-                text,
-                name=name,
-                attachment_type=_allure.attachment_type.TEXT,
-            )
-            return
-
         logger.info("ATTACH[%s] %s", name, text)
 
     def attach_file(self, path: Path, name: str) -> None:
-        if _allure is not None:
-            _allure.attach.file(
-                str(path),
-                name=name,
-                attachment_type=_allure.attachment_type.TEXT,
-            )
-            return
-
         logger.info("ATTACH_FILE[%s] %s", name, path)
-
-    def label(self, name: str, value: str):
-        if _allure is not None:
-            _allure.dynamic.label(name, value)
-
-    def parent_suite(self, name: str):
-        if _allure is not None:
-            _allure.dynamic.parent_suite(name)
-
-    def suite(self, name: str):
-        if _allure is not None:
-            _allure.dynamic.suite(name)
-
-    def sub_suite(self, name: str):
-        if _allure is not None:
-            _allure.dynamic.sub_suite(name)
-
-    def description(self, text: str):
-        if _allure is not None:
-            _allure.dynamic.description(text)
 
 
 report = ReportAdapter()

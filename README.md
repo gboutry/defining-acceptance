@@ -75,20 +75,32 @@ MOCK_MODE=1 pytest tests/
 
 ## Reporting
 
-Results are written to `reports/allure-results/` by default. To view them:
+### Test Observer
+
+Set `TO_URL` and `TO_SNAP_REVISION` to stream results to a
+[Test Observer](https://github.com/canonical/test_observer) instance in real time.
+One test execution is created per suite category.  Step-level events are posted
+as the test runs, giving a live timeline in the UI.
 
 ```bash
-allure-serve   # open the Allure report in a browser
-allure-report  # generate a static HTML report
-```
-
-To integrate with [Test Observer](https://github.com/canonical/test-observer), set:
-
-```bash
-export TO_URL=https://your-test-observer-instance
+export TO_URL=https://test-observer-api.example.com
 export TO_SNAP_REVISION=12345
 pytest tests/
 ```
 
-Use `TO_URL=file:///path/to/dir` to record results locally and upload later with
-`to-upload --deferred-dir /path/to/dir --to-url https://...`.
+Optional variables: `TO_SNAP_NAME`, `TO_SNAP_TRACK`, `TO_SNAP_STAGE`,
+`TO_SNAP_VERSION`, `TO_SNAP_STORE`, `TO_ENVIRONMENT`, `TO_TEST_PLAN`,
+`TO_ARCH`, `TO_CI_LINK`.
+
+### Deferred upload
+
+For runs without direct access to Test Observer (e.g. air-gapped lab), record
+results locally and upload later:
+
+```bash
+# Record to a local directory during the run
+TO_URL=file:///tmp/to-results TO_SNAP_REVISION=12345 pytest tests/
+
+# Upload when connectivity is available
+to-upload /tmp/to-results --to-url https://test-observer-api.example.com
+```

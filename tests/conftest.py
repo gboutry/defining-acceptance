@@ -7,7 +7,6 @@ import typing
 from unittest.mock import MagicMock
 
 import pytest
-import pytest_bdd.parser
 from pytest_bdd import given
 
 from defining_acceptance.clients import OpenStackClient, SSHRunner, SunbeamClient
@@ -260,7 +259,9 @@ def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
         sunbeam_client.configure(primary)
 
     for machine in testbed.machines[1:]:
-        with report.step(f"Joining machine {machine.hostname} ({machine.ip}) to cluster"):
+        with report.step(
+            f"Joining machine {machine.hostname} ({machine.ip}) to cluster"
+        ):
             sunbeam_client.install_snap(machine, channel)
             sunbeam_client.prepare_node(machine)
             fqdn = machine.fqdn or machine.hostname
@@ -354,33 +355,3 @@ def provision_cloud(bootstrapped: None, openstack_client: OpenStackClient) -> No
         report.attach_text(
             "\n".join(e.get("URL", "") for e in endpoints), "Service endpoints"
         )
-
-
-# ── Allure reporting hook ─────────────────────────────────────────────────────
-
-
-def pytest_bdd_before_scenario(
-    request: pytest.FixtureRequest,
-    feature: pytest_bdd.parser.Feature,
-    scenario: pytest_bdd.parser.Scenario,
-) -> None:
-    """Map Gherkin tags to Allure suite hierarchy."""
-    test_host = os.environ.get("TEST_HOST")
-    if test_host:
-        report.label("host", test_host)
-        report.label("environment", test_host)
-
-    all_tags = set(feature.tags) | set(scenario.tags)
-    for plan in (
-        "security",
-        "reliability",
-        "functional",
-        "performance",
-    ):
-        if plan in all_tags:
-            report.parent_suite(plan.capitalize())
-            break
-
-    report.suite(feature.name)
-    report.sub_suite(scenario.name)
-    report.description(feature.description)
