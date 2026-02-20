@@ -197,7 +197,7 @@ class OpenStackClient:
 
     def security_group_rule_list(self, security_group: str) -> list[dict]:
         return self.run_json(
-            f"security group rule list --security-group {security_group}"
+            f"security group rule list {security_group}"
         )
 
     def security_group_rule_create(
