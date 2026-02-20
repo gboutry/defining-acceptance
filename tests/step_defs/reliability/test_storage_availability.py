@@ -147,8 +147,8 @@ def _create_vm_with_volume(
 
     fip = openstack_client.floating_ip_create(external_net)
     floating_ip = fip["floating_ip_address"]
-    openstack_client.floating_ip_add(server_id, floating_ip)
     cleanup_stack.add(openstack_client.floating_ip_delete, floating_ip)
+    openstack_client.floating_ip_add(server_id, floating_ip)
 
     with report.step(f"Waiting for SSH on VM at {floating_ip}"):
         _wait_for_ssh(ssh_runner, primary_ip, floating_ip, key_path)
