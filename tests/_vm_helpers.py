@@ -94,7 +94,11 @@ def create_vm(
     if flavor is None:
         flavors = openstack_client.flavor_list()
         assert flavors, "No flavors available"
-        flavor = flavors[0]["Name"]
+        flavor = next(
+            flavor
+            for flavor in sorted(flavors, key=lambda f: f["RAM"])
+            if flavor["RAM"] >= 1024 and "sev" not in flavor["Name"].lower()
+        )["Name"]
     image = next(
         (i for i in images if "ubuntu" in i["Name"].lower()),
         images[0],
@@ -116,9 +120,7 @@ def create_vm(
         defer(openstack_client.keypair_delete, keypair_name)
     key_path = f"/tmp/{keypair_name}.pem"
     ssh_runner.write_file(primary_ip, key_path, private_key)
-    defer(
-        ssh_runner.run, primary_ip, f"rm -f {key_path}", attach_output=False
-    )
+    defer(ssh_runner.run, primary_ip, f"rm -f {key_path}", attach_output=False)
     ssh_runner.run(primary_ip, f"chmod 600 {key_path}", attach_output=False)
 
     server = openstack_client.server_create(
@@ -144,9 +146,7 @@ def create_vm(
     floating_ip = ""
     if with_floating_ip:
         fip = openstack_client.floating_ip_create(external_net)
-        defer(
-            openstack_client.floating_ip_delete, fip["floating_ip_address"]
-        )
+        defer(openstack_client.floating_ip_delete, fip["floating_ip_address"])
         floating_ip = fip["floating_ip_address"]
         openstack_client.floating_ip_add(server_id, floating_ip)
         if poll_ssh:
