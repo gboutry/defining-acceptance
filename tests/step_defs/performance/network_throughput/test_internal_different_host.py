@@ -6,7 +6,7 @@ import os
 from defining_acceptance.clients.openstack import OpenStackClient
 from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.testbed import TestbedConfig
-from defining_acceptance.utils import CleanupStack
+from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -48,7 +48,7 @@ def setup_vms_different_host(
     ssh_runner: SSHRunner,
     running_vm: dict,
     client_vm: dict,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
 ):
     """Create a client VM with anti-affinity to the server VM.
 
@@ -77,13 +77,13 @@ def setup_vms_different_host(
             f"anti-affinity-{running_vm['server_name']}", "anti-affinity"
         )
         sg_id = sg["id"]
-        cleanup_stack.add(demo_os_runner.server_group_delete, sg_id)
+        defer(demo_os_runner.server_group_delete, sg_id)
 
     resources = create_vm(
         demo_os_runner,
         testbed,
         ssh_runner,
-        cleanup_stack,
+        defer,
         network_name=running_vm.get("network_name"),
         server_group_id=sg_id,
     )
@@ -106,7 +106,9 @@ def setup_vms_different_host(
 
 @pytest.fixture
 @when("I measure throughput between the VMs")
-def measure_throughput(running_vm, client_vm, ssh_runner, throughput_result):
+def measure_throughput(
+    running_vm: dict, client_vm: dict, ssh_runner: SSHRunner, throughput_result: dict
+):
     """Run iperf3 client → server across different hypervisors and record Gbps."""
     if MOCK_MODE:
         throughput_result["gbps"] = 1.8
@@ -146,7 +148,7 @@ def measure_throughput(running_vm, client_vm, ssh_runner, throughput_result):
 
 
 @then("throughput should be at least 1 Gbps")
-def check_throughput_1gbps(throughput_result):
+def check_throughput_1gbps(throughput_result: dict):
     """Assert the measured throughput meets the minimum threshold."""
     if MOCK_MODE:
         return

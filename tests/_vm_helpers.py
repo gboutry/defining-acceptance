@@ -12,7 +12,7 @@ from typing import TYPE_CHECKING
 
 from defining_acceptance.clients.ssh import CommandResult, SSHRunner
 from defining_acceptance.reporting import report
-from defining_acceptance.utils import CleanupStack
+from defining_acceptance.utils import DeferStack
 
 if TYPE_CHECKING:
     from defining_acceptance.clients.openstack import OpenStackClient
@@ -66,7 +66,7 @@ def create_vm(
     openstack_client: OpenStackClient,
     testbed: TestbedConfig,
     ssh_runner: SSHRunner,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
     *,
     flavor: str | None = None,
     network_name: str | None = None,
@@ -113,10 +113,10 @@ def create_vm(
 
     with report.step(f"Creating keypair {keypair_name!r}"):
         private_key = openstack_client.keypair_create(keypair_name)
-        cleanup_stack.add(openstack_client.keypair_delete, keypair_name)
+        defer(openstack_client.keypair_delete, keypair_name)
     key_path = f"/tmp/{keypair_name}.pem"
     ssh_runner.write_file(primary_ip, key_path, private_key)
-    cleanup_stack.add(
+    defer(
         ssh_runner.run, primary_ip, f"rm -f {key_path}", attach_output=False
     )
     ssh_runner.run(primary_ip, f"chmod 600 {key_path}", attach_output=False)
@@ -132,22 +132,19 @@ def create_vm(
         timeout=300,
     )
     server_id = server["id"]
-    cleanup_stack.add(openstack_client.server_delete, server_id)
+    defer(openstack_client.server_delete, server_id)
 
     # Extract the first fixed IP from any network.
     internal_ip = ""
     for net_addrs in server.get("addresses", {}).values():
-        for addr_info in net_addrs:
-            if addr_info.get("OS-EXT-IPS:type") == "fixed":
-                internal_ip = addr_info.get("addr", "")
-                break
-        if internal_ip:
+        if net_addrs:
+            internal_ip = net_addrs[0]
             break
 
     floating_ip = ""
     if with_floating_ip:
         fip = openstack_client.floating_ip_create(external_net)
-        cleanup_stack.add(
+        defer(
             openstack_client.floating_ip_delete, fip["floating_ip_address"]
         )
         floating_ip = fip["floating_ip_address"]

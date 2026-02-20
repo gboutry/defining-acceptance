@@ -4,7 +4,7 @@ import os
 from contextlib import suppress
 
 from defining_acceptance.clients.openstack import OpenStackClient
-from defining_acceptance.utils import CleanupStack
+from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -28,7 +28,7 @@ def test_restricted_network_isolation():
 
 @given("the VM is on the restricted network")
 def setup_vm_restricted_network(
-    running_vm: dict, demo_os_runner: OpenStackClient, cleanup_stack: CleanupStack
+    running_vm: dict, demo_os_runner: OpenStackClient, defer: DeferStack
 ):
     """Apply a security group that blocks all ICMP egress to the Background VM.
 
@@ -45,7 +45,7 @@ def setup_vm_restricted_network(
         sg_name, description="Blocks egress for isolation test"
     )
     sg_id = sg["id"]
-    cleanup_stack.add(demo_os_runner.security_group_delete, sg_id)
+    defer(demo_os_runner.security_group_delete, sg_id)
 
     # Remove the auto-created allow-all egress rules.
     for rule in demo_os_runner.security_group_rule_list(sg_id):
@@ -64,7 +64,7 @@ def setup_vm_restricted_network(
     running_vm["isolation_sg_id"] = sg_id
 
     demo_os_runner.run(f"server add security group {server_id} {sg_name}").check()
-    cleanup_stack.add(
+    defer(
         demo_os_runner.run, f"server remove security group {server_id} {sg_name}"
     )
     report.note(f"Security group {sg_name!r} applied — egress blocked")

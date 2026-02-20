@@ -28,7 +28,7 @@ def setup_two_vms_internal(
     ssh_runner,
     running_vm,
     second_vm,
-    cleanup_stack,
+    defer,
 ):
     """Create a second VM on the same internal network as the Background VM."""
     if MOCK_MODE:
@@ -44,7 +44,7 @@ def setup_two_vms_internal(
         demo_os_runner,
         testbed,
         ssh_runner,
-        cleanup_stack,
+        defer,
         network_name=running_vm.get("network_name"),
         with_floating_ip=False,
     )

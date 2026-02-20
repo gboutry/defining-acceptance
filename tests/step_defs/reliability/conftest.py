@@ -5,7 +5,7 @@ import os
 from defining_acceptance.clients.openstack import OpenStackClient
 from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.testbed import TestbedConfig
-from defining_acceptance.utils import CleanupStack
+from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given
 
@@ -36,7 +36,7 @@ def setup_running_vm(
     testbed: TestbedConfig,
     ssh_runner: SSHRunner,
     running_vm: dict,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
 ):
     """Create a VM with a floating IP and wait for SSH to become available."""
     if MOCK_MODE:
@@ -53,7 +53,7 @@ def setup_running_vm(
             }
         )
         return
-    resources = create_vm(demo_os_runner, testbed, ssh_runner, cleanup_stack)
+    resources = create_vm(demo_os_runner, testbed, ssh_runner, defer)
     running_vm.update(resources)
     report.note(f"VM {resources['server_name']} running at {resources['floating_ip']}")
 
@@ -65,7 +65,7 @@ def setup_multiple_vms(
     ssh_runner: SSHRunner,
     running_vm: dict,
     second_vm: dict,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
 ):
     """Create a second VM on the same network as the Background VM."""
     if MOCK_MODE:
@@ -86,7 +86,7 @@ def setup_multiple_vms(
         demo_os_runner,
         testbed,
         ssh_runner,
-        cleanup_stack,
+        defer,
         network_name=network_name,
     )
     second_vm.update(resources)

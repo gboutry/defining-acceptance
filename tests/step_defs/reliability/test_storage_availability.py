@@ -5,7 +5,7 @@ import uuid
 
 from defining_acceptance.clients.openstack import OpenStackClient
 from defining_acceptance.testbed import TestbedConfig
-from defining_acceptance.utils import CleanupStack
+from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -56,7 +56,7 @@ def _create_vm_with_volume(
     openstack_client: OpenStackClient,
     testbed: TestbedConfig,
     ssh_runner: SSHRunner,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
 ) -> dict:
     """Create a VM with a volume attached and a floating IP; register cleanup."""
     volume_name = f"test-vol-{uuid.uuid4().hex[:8]}"
@@ -72,15 +72,15 @@ def _create_vm_with_volume(
         openstack_client,
         testbed,
         ssh_runner,
-        cleanup_stack,
+        defer,
         flavor=flavor,
     )
     server_id = resources["server_id"]
 
     volume = openstack_client.volume_create(volume_name, size=1, timeout=180)
-    cleanup_stack.add(openstack_client.volume_delete, volume["id"])
+    defer(openstack_client.volume_delete, volume["id"])
     openstack_client.volume_attach(server_id, volume["id"])
-    cleanup_stack.add(openstack_client.volume_detach, server_id, volume["id"])
+    defer(openstack_client.volume_detach, server_id, volume["id"])
 
     return {
         **resources,
@@ -104,7 +104,7 @@ def spawn_vm_with_volume(
     testbed: TestbedConfig,
     ssh_runner: SSHRunner,
     spawn_vm_result: dict,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
 ):
     """Create a VM with a Cinder volume and a reachable floating IP."""
     if MOCK_MODE:
@@ -118,9 +118,7 @@ def spawn_vm_with_volume(
             }
         )
         return
-    resources = _create_vm_with_volume(
-        demo_os_runner, testbed, ssh_runner, cleanup_stack
-    )
+    resources = _create_vm_with_volume(demo_os_runner, testbed, ssh_runner, defer)
     spawn_vm_result.update(resources)
 
 
@@ -162,7 +160,7 @@ def given_vm_with_volume(
     testbed: TestbedConfig,
     ssh_runner: SSHRunner,
     vm_resources: dict,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
 ):
     """Provision a VM with a volume and floating IP for the resilience test."""
     if MOCK_MODE:
@@ -176,9 +174,7 @@ def given_vm_with_volume(
             }
         )
         return
-    resources = _create_vm_with_volume(
-        demo_os_runner, testbed, ssh_runner, cleanup_stack
-    )
+    resources = _create_vm_with_volume(demo_os_runner, testbed, ssh_runner, defer)
     vm_resources.update(resources)
 
 
@@ -189,7 +185,9 @@ def osd_result() -> dict:
 
 @pytest.fixture
 @when("I stop the OSD daemons on one host")
-def stop_osd_on_host(testbed, ssh_runner, osd_result, cleanup_stack):
+def stop_osd_on_host(
+    testbed: TestbedConfig, ssh_runner: SSHRunner, osd_result: dict, defer: DeferStack
+):
     """Stop microceph.osd on a non-primary storage node; restart on cleanup."""
     if MOCK_MODE:
         osd_result.update({"stopped": True, "host": "mock-host"})
@@ -202,7 +200,7 @@ def stop_osd_on_host(testbed, ssh_runner, osd_result, cleanup_stack):
     target = storage_machines[0]
     with report.step(f"Stopping microceph.osd on {target.hostname} ({target.ip})"):
         ssh_runner.run(target.ip, "sudo snap stop microceph.osd", attach_output=False)
-    cleanup_stack.add(
+    defer(
         ssh_runner.run,
         target.ip,
         "sudo snap restart microceph.osd",
@@ -212,7 +210,7 @@ def stop_osd_on_host(testbed, ssh_runner, osd_result, cleanup_stack):
 
 
 @then("storage should remain available")
-def verify_storage_available(testbed, ssh_runner):
+def verify_storage_available(testbed: TestbedConfig, ssh_runner: SSHRunner):
     """Assert the Ceph cluster is not in HEALTH_ERR state."""
     if MOCK_MODE:
         return
@@ -226,7 +224,7 @@ def verify_storage_available(testbed, ssh_runner):
 
 
 @then("I should be able to read from the volume")
-def verify_volume_read(vm_resources, ssh_runner):
+def verify_volume_read(vm_resources: dict, ssh_runner: SSHRunner):
     """Read from /dev/vdb on the VM to verify the volume is readable."""
     if MOCK_MODE:
         return
@@ -248,7 +246,7 @@ def verify_volume_read(vm_resources, ssh_runner):
 
 
 @then("I should be able to write to the volume")
-def verify_volume_write(vm_resources, ssh_runner):
+def verify_volume_write(vm_resources: dict, ssh_runner: SSHRunner):
     """Write to /dev/vdb on the VM to verify the volume is writable."""
     if MOCK_MODE:
         return

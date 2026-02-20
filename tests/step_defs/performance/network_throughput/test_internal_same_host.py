@@ -6,7 +6,7 @@ import os
 from defining_acceptance.clients.openstack import OpenStackClient
 from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.testbed import TestbedConfig
-from defining_acceptance.utils import CleanupStack
+from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -47,7 +47,7 @@ def setup_vms_same_host(
     ssh_runner: SSHRunner,
     running_vm: dict,
     client_vm: dict,
-    cleanup_stack: CleanupStack,
+    defer: DeferStack,
 ):
     """Create a client VM with soft-affinity to the server VM (same host preferred).
 
@@ -75,13 +75,13 @@ def setup_vms_same_host(
                 f"affinity-{running_vm['server_name']}", "soft-affinity"
             )
             sg_id = sg["id"]
-            cleanup_stack.add(demo_os_runner.server_group_delete, sg_id)
+            defer(demo_os_runner.server_group_delete, sg_id)
 
     resources = create_vm(
         demo_os_runner,
         testbed,
         ssh_runner,
-        cleanup_stack,
+        defer,
         network_name=running_vm.get("network_name"),
         server_group_id=sg_id,
     )
@@ -140,7 +140,7 @@ def measure_throughput(
 
 
 @then("throughput should be at least 1 Gbps")
-def check_throughput_1gbps(throughput_result):
+def check_throughput_1gbps(throughput_result: dict):
     """Assert the measured throughput meets the minimum threshold."""
     if MOCK_MODE:
         return

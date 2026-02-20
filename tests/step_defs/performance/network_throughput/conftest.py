@@ -2,6 +2,10 @@
 
 import os
 
+from defining_acceptance.clients.openstack import OpenStackClient
+from defining_acceptance.clients.ssh import SSHRunner
+from defining_acceptance.testbed import TestbedConfig
+from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given
 
@@ -21,7 +25,13 @@ def running_vm() -> dict:
 
 
 @given("a VM is running")
-def setup_running_vm(demo_os_runner, testbed, ssh_runner, running_vm, cleanup_stack):
+def setup_running_vm(
+    demo_os_runner: OpenStackClient,
+    testbed: TestbedConfig,
+    ssh_runner: SSHRunner,
+    running_vm: dict,
+    defer: DeferStack,
+):
     """Create the iperf server VM with a floating IP."""
     if MOCK_MODE:
         running_vm.update(
@@ -36,7 +46,7 @@ def setup_running_vm(demo_os_runner, testbed, ssh_runner, running_vm, cleanup_st
             }
         )
         return
-    resources = create_vm(demo_os_runner, testbed, ssh_runner, cleanup_stack)
+    resources = create_vm(demo_os_runner, testbed, ssh_runner, defer)
     running_vm.update(resources)
 
     # Install iperf3 on the server VM.

@@ -3,6 +3,7 @@
 import os
 import re
 
+from defining_acceptance.clients.ssh import SSHRunner
 import pytest
 from pytest_bdd import scenario, then, when
 
@@ -32,7 +33,7 @@ def download_result() -> dict:
 
 @pytest.fixture
 @when("I download data from an external source")
-def download_from_external(running_vm, ssh_runner, download_result):
+def download_from_external(running_vm: dict, ssh_runner: SSHRunner, download_result: dict):
     """Download a 10 MB test payload from Cloudflare and measure speed.
 
     ``curl`` reports the download speed in bytes/second via the
@@ -79,7 +80,7 @@ def download_from_external(running_vm, ssh_runner, download_result):
 
 
 @then("download speed should be acceptable")
-def check_download_speed(download_result):
+def check_download_speed(download_result: dict):
     """Assert the download speed is at least the configured minimum."""
     if MOCK_MODE:
         return

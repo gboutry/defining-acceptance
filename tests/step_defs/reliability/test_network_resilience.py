@@ -4,7 +4,7 @@ import os
 from contextlib import suppress
 
 from defining_acceptance.clients.openstack import OpenStackClient
-from defining_acceptance.utils import CleanupStack
+from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -36,7 +36,7 @@ def test_internal_network_communication():
 
 @given("the VM has restricted network access")
 def setup_vm_restricted_access(
-    running_vm: dict, demo_os_runner: OpenStackClient, cleanup_stack: CleanupStack
+    running_vm: dict, demo_os_runner: OpenStackClient, defer: DeferStack
 ):
     """Add a restricted security group that blocks ICMP egress.
 
@@ -54,7 +54,7 @@ def setup_vm_restricted_access(
         sg_name, description="Blocks ICMP egress for ACL test"
     )
     sg_id = sg["id"]
-    cleanup_stack.add(demo_os_runner.security_group_delete, sg_id)
+    defer(demo_os_runner.security_group_delete, sg_id)
 
     # Delete the auto-created allow-all egress rules so egress is blocked.
     existing_rules = demo_os_runner.security_group_rule_list(sg_id)
@@ -75,7 +75,7 @@ def setup_vm_restricted_access(
 
     # Add the restricted group to the VM.
     demo_os_runner.run(f"server add security group {server_id} {sg_name}").check()
-    cleanup_stack.add(
+    defer(
         demo_os_runner.run, f"server remove security group {server_id} {sg_name}"
     )
 
