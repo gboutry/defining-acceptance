@@ -258,21 +258,11 @@ class OpenStackClient:
 
     # ── Keypair ───────────────────────────────────────────────────────────────
 
-    def keypair_create(self, name: str, public_key: str | None = None) -> str:
-        cmd = f"keypair create {name}"
-        remote_path: str | None = None
-        if public_key is not None:
-            remote_path = f"/tmp/keypair-{name}.pub"
-            self._ssh.write_file(self._machine.ip, remote_path, public_key)
-            cmd += f" --public-key {remote_path}"
+    def keypair_create(self, name: str) -> str:
         with report.step(f"Create keypair {name!r}"):
-            try:
-                ret = self.run(cmd)
-                ret.check()
-                return ret.stdout.strip()
-            finally:
-                if remote_path is not None:
-                    self.run(f"rm -f {remote_path}")
+            ret = self.run(f"keypair create {name}")
+            ret.check()
+            return ret.stdout
 
     def keypair_delete(self, name: str) -> CommandResult:
         return self.run(f"keypair delete {name}").check()
