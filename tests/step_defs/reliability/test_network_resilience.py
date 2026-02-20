@@ -3,6 +3,8 @@
 import os
 from contextlib import suppress
 
+from defining_acceptance.clients.openstack import OpenStackClient
+from defining_acceptance.utils import CleanupStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -33,7 +35,9 @@ def test_internal_network_communication():
 
 
 @given("the VM has restricted network access")
-def setup_vm_restricted_access(running_vm, demo_os_runner, request):
+def setup_vm_restricted_access(
+    running_vm: dict, demo_os_runner: OpenStackClient, cleanup_stack: CleanupStack
+):
     """Add a restricted security group that blocks ICMP egress.
 
     Creates a security group allowing only SSH ingress (stateful — return
@@ -50,6 +54,7 @@ def setup_vm_restricted_access(running_vm, demo_os_runner, request):
         sg_name, description="Blocks ICMP egress for ACL test"
     )
     sg_id = sg["id"]
+    cleanup_stack.add(demo_os_runner.security_group_delete, sg_id)
 
     # Delete the auto-created allow-all egress rules so egress is blocked.
     existing_rules = demo_os_runner.security_group_rule_list(sg_id)
@@ -69,15 +74,10 @@ def setup_vm_restricted_access(running_vm, demo_os_runner, request):
     running_vm["restricted_sg_name"] = sg_name
 
     # Add the restricted group to the VM.
-    demo_os_runner._run(f"server add security group {server_id} {sg_name}").check()
-
-    def _cleanup() -> None:
-        with suppress(Exception):
-            demo_os_runner._run(f"server remove security group {server_id} {sg_name}")
-        with suppress(Exception):
-            demo_os_runner.security_group_delete(sg_id)
-
-    request.addfinalizer(_cleanup)
+    demo_os_runner.run(f"server add security group {server_id} {sg_name}").check()
+    cleanup_stack.add(
+        demo_os_runner.run, f"server remove security group {server_id} {sg_name}"
+    )
 
 
 @pytest.fixture

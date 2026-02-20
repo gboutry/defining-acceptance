@@ -2,6 +2,10 @@
 
 import os
 
+from defining_acceptance.clients.openstack import OpenStackClient
+from defining_acceptance.clients.ssh import SSHRunner
+from defining_acceptance.testbed import TestbedConfig
+from defining_acceptance.utils import CleanupStack
 import pytest
 from pytest_bdd import given
 
@@ -27,7 +31,13 @@ def second_vm() -> dict:
 
 
 @given("a VM is running")
-def setup_running_vm(demo_os_runner, testbed, ssh_runner, running_vm, request):
+def setup_running_vm(
+    demo_os_runner: OpenStackClient,
+    testbed: TestbedConfig,
+    ssh_runner: SSHRunner,
+    running_vm: dict,
+    cleanup_stack: CleanupStack,
+):
     """Create a VM with a floating IP and wait for SSH to become available."""
     if MOCK_MODE:
         running_vm.update(
@@ -43,6 +53,6 @@ def setup_running_vm(demo_os_runner, testbed, ssh_runner, running_vm, request):
             }
         )
         return
-    resources = create_vm(demo_os_runner, testbed, ssh_runner, request)
+    resources = create_vm(demo_os_runner, testbed, ssh_runner, cleanup_stack)
     running_vm.update(resources)
     report.note(f"VM {resources['server_name']} running at {resources['floating_ip']}")

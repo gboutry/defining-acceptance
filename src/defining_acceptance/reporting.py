@@ -13,7 +13,9 @@ class ReportAdapter:
     def __init__(self) -> None:
         self._event_callback: Callable[[str, str, datetime], None] | None = None
 
-    def set_event_callback(self, fn: Callable[[str, str, datetime], None] | None) -> None:
+    def set_event_callback(
+        self, fn: Callable[[str, str, datetime], None] | None
+    ) -> None:
         """Register a callback invoked on step enter/exit with (detail, timestamp).
 
         Pass ``None`` to disable (fall back to logging).

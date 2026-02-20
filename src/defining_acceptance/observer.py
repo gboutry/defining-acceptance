@@ -90,14 +90,18 @@ class _BasePlugin:
             _orig_text(content, name)
             text = "" if content is None else str(content)
             if text.strip():
-                plugin._io_lines.append(f"### {name}\n{text}")
+                plugin._io_lines.append(
+                    f"===== BEGIN {name} =====\n{text}\n===== END {name} ====="
+                )
 
         def _capture_file(path: object, name: str) -> None:
             _orig_file(path, name)
             try:
                 text = Path(str(path)).read_text(encoding="utf-8", errors="replace")
                 if text.strip():
-                    plugin._io_lines.append(f"### {name}\n{text}")
+                    plugin._io_lines.append(
+                        f"===== BEGIN {name} =====\n{text}\n===== END {name} ====="
+                    )
             except Exception:
                 pass
 
@@ -121,7 +125,9 @@ class _BasePlugin:
         """Close/finalise the execution associated with *key*."""
         raise NotImplementedError
 
-    def _post_event(self, key: Any, event_name: str, detail: str, timestamp: object) -> None:
+    def _post_event(
+        self, key: Any, event_name: str, detail: str, timestamp: object
+    ) -> None:
         """Post an event."""
         raise NotImplementedError
 

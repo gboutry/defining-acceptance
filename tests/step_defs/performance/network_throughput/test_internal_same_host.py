@@ -2,8 +2,11 @@
 
 import json
 import os
-from contextlib import suppress
 
+from defining_acceptance.clients.openstack import OpenStackClient
+from defining_acceptance.clients.ssh import SSHRunner
+from defining_acceptance.testbed import TestbedConfig
+from defining_acceptance.utils import CleanupStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -39,7 +42,12 @@ def throughput_result() -> dict:
 
 @given("a second VM on the same network and host")
 def setup_vms_same_host(
-    demo_os_runner, testbed, ssh_runner, running_vm, client_vm, request
+    demo_os_runner: OpenStackClient,
+    testbed: TestbedConfig,
+    ssh_runner: SSHRunner,
+    running_vm: dict,
+    client_vm: dict,
+    cleanup_stack: CleanupStack,
 ):
     """Create a client VM with soft-affinity to the server VM (same host preferred).
 
@@ -67,18 +75,13 @@ def setup_vms_same_host(
                 f"affinity-{running_vm['server_name']}", "soft-affinity"
             )
             sg_id = sg["id"]
-
-        def _del_sg() -> None:
-            with suppress(Exception):
-                demo_os_runner.server_group_delete(sg_id)
-
-        request.addfinalizer(_del_sg)
+            cleanup_stack.add(demo_os_runner.server_group_delete, sg_id)
 
     resources = create_vm(
         demo_os_runner,
         testbed,
         ssh_runner,
-        request,
+        cleanup_stack,
         network_name=running_vm.get("network_name"),
         server_group_id=sg_id,
     )
@@ -97,7 +100,9 @@ def setup_vms_same_host(
 
 @pytest.fixture
 @when("I measure throughput between the VMs")
-def measure_throughput(running_vm, client_vm, ssh_runner, throughput_result):
+def measure_throughput(
+    running_vm: dict, client_vm: dict, ssh_runner: SSHRunner, throughput_result: dict
+):
     """Run iperf3 client → server and record Gbps."""
     if MOCK_MODE:
         throughput_result["gbps"] = 2.5

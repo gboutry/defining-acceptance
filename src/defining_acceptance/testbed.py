@@ -323,6 +323,7 @@ class SshConfig:
 
 @dataclass(frozen=True)
 class TestbedConfig:
+    __test__ = False  # Prevent pytest from trying to collect this as a test case
     machines: list[MachineConfig]
     deployment: Optional[DeploymentConfig] = None
     juju: Optional[JujuConfig] = None

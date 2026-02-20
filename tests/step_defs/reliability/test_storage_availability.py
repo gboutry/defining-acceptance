@@ -3,10 +3,10 @@
 import os
 import time
 import uuid
-from contextlib import suppress
 
 from defining_acceptance.clients.openstack import OpenStackClient
 from defining_acceptance.testbed import TestbedConfig
+from defining_acceptance.utils import CleanupStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
@@ -80,7 +80,10 @@ def _wait_for_ssh(
 
 
 def _create_vm_with_volume(
-    openstack_client: OpenStackClient, testbed: TestbedConfig, ssh_runner: SSHRunner, request
+    openstack_client: OpenStackClient,
+    testbed: TestbedConfig,
+    ssh_runner: SSHRunner,
+    cleanup_stack: CleanupStack,
 ) -> dict:
     """Create a VM with a volume attached and a floating IP; register cleanup."""
     uid = uuid.uuid4().hex[:8]
@@ -96,7 +99,11 @@ def _create_vm_with_volume(
     networks = openstack_client.network_list()
     assert networks, "No networks available"
 
-    flavor = flavors[0]["Name"]
+    try:
+        flavor = next(flavor for flavor in flavors if flavor["RAM"] >= 1024)["Name"]
+    except StopIteration:
+        assert False, "No suitable flavor with >=1GB RAM found"
+
     image = next(
         (i for i in images if "ubuntu" in i["Name"].lower()),
         images[0],
@@ -113,9 +120,13 @@ def _create_vm_with_volume(
     # Create keypair; OpenStack generates the private key, returned only once.
     with report.step(f"Creating keypair {keypair_name!r}"):
         private_key = openstack_client.keypair_create(keypair_name)
+        cleanup_stack.add(openstack_client.keypair_delete, keypair_name)
     key_path = f"/tmp/{keypair_name}.pem"
     ssh_runner.write_file(primary_ip, key_path, private_key)
     ssh_runner.run(primary_ip, f"chmod 600 {key_path}", attach_output=False)
+    cleanup_stack.add(
+        ssh_runner.run, primary_ip, f"rm -f {key_path}", attach_output=False
+    )
 
     server = openstack_client.server_create(
         server_name,
@@ -125,15 +136,19 @@ def _create_vm_with_volume(
         key_name=keypair_name,
         timeout=300,
     )
+    cleanup_stack.add(openstack_client.server_delete, server["id"])
     server_id = server["id"]
 
     volume = openstack_client.volume_create(volume_name, size=1, timeout=120)
+    cleanup_stack.add(openstack_client.volume_delete, volume["id"])
     volume_id = volume["id"]
     openstack_client.volume_attach(server_id, volume_id)
+    cleanup_stack.add(openstack_client.volume_detach, server_id, volume_id)
 
     fip = openstack_client.floating_ip_create(external_net)
     floating_ip = fip["floating_ip_address"]
     openstack_client.floating_ip_add(server_id, floating_ip)
+    cleanup_stack.add(openstack_client.floating_ip_delete, floating_ip)
 
     with report.step(f"Waiting for SSH on VM at {floating_ip}"):
         _wait_for_ssh(ssh_runner, primary_ip, floating_ip, key_path)
@@ -149,21 +164,6 @@ def _create_vm_with_volume(
         "primary_ip": primary_ip,
     }
 
-    def _cleanup() -> None:
-        with suppress(Exception):
-            openstack_client.floating_ip_delete(floating_ip)
-        with suppress(Exception):
-            openstack_client.volume_detach(server_id, volume_id)
-        with suppress(Exception):
-            openstack_client.server_delete(server_id)
-        with suppress(Exception):
-            openstack_client.volume_delete(volume_id)
-        with suppress(Exception):
-            openstack_client.keypair_delete(keypair_name)
-        with suppress(Exception):
-            ssh_runner.run(primary_ip, f"rm -f {key_path}", attach_output=False)
-
-    request.addfinalizer(_cleanup)
     return resources
 
 
@@ -193,7 +193,11 @@ def spawn_vm_result() -> dict:
 @pytest.fixture
 @when("I spawn a VM with a volume attached")
 def spawn_vm_with_volume(
-    demo_os_runner: OpenStackClient, testbed, ssh_runner, spawn_vm_result, request
+    demo_os_runner: OpenStackClient,
+    testbed: TestbedConfig,
+    ssh_runner: SSHRunner,
+    spawn_vm_result: dict,
+    cleanup_stack: CleanupStack,
 ):
     """Create a VM with a Cinder volume and a reachable floating IP."""
     if MOCK_MODE:
@@ -207,7 +211,9 @@ def spawn_vm_with_volume(
             }
         )
         return
-    resources = _create_vm_with_volume(demo_os_runner, testbed, ssh_runner, request)
+    resources = _create_vm_with_volume(
+        demo_os_runner, testbed, ssh_runner, cleanup_stack
+    )
     spawn_vm_result.update(resources)
 
 
@@ -245,7 +251,11 @@ def vm_resources() -> dict:
 
 @given("a VM with a volume attached")
 def given_vm_with_volume(
-    demo_os_runner: OpenStackClient, testbed, ssh_runner, vm_resources, request
+    demo_os_runner: OpenStackClient,
+    testbed: TestbedConfig,
+    ssh_runner: SSHRunner,
+    vm_resources: dict,
+    cleanup_stack: CleanupStack,
 ):
     """Provision a VM with a volume and floating IP for the resilience test."""
     if MOCK_MODE:
@@ -259,7 +269,9 @@ def given_vm_with_volume(
             }
         )
         return
-    resources = _create_vm_with_volume(demo_os_runner, testbed, ssh_runner, request)
+    resources = _create_vm_with_volume(
+        demo_os_runner, testbed, ssh_runner, cleanup_stack
+    )
     vm_resources.update(resources)
 
 
@@ -270,7 +282,7 @@ def osd_result() -> dict:
 
 @pytest.fixture
 @when("I stop the OSD daemons on one host")
-def stop_osd_on_host(testbed, ssh_runner, osd_result, request):
+def stop_osd_on_host(testbed, ssh_runner, osd_result, cleanup_stack):
     """Stop microceph.osd on a non-primary storage node; restart on cleanup."""
     if MOCK_MODE:
         osd_result.update({"stopped": True, "host": "mock-host"})
@@ -283,17 +295,15 @@ def stop_osd_on_host(testbed, ssh_runner, osd_result, request):
     target = storage_machines[0]
     with report.step(f"Stopping microceph.osd on {target.hostname} ({target.ip})"):
         ssh_runner.run(target.ip, "sudo snap stop microceph.osd", attach_output=False)
+    cleanup_stack.add(
+        ssh_runner.run,
+        target.ip,
+        "sudo snap restart microceph.osd",
+        attach_output=False,
+    )
     osd_result.update({"host": target.hostname, "ip": target.ip, "stopped": True})
 
-    def _restart() -> None:
-        with suppress(Exception):
-            ssh_runner.run(
-                target.ip,
-                "sudo snap restart microceph.osd",
-                attach_output=False,
-            )
 
-    request.addfinalizer(_restart)
 
 
 @then("storage should remain available")

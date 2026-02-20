@@ -8,11 +8,11 @@ from __future__ import annotations
 
 import time
 import uuid
-from contextlib import suppress
 from typing import TYPE_CHECKING
 
 from defining_acceptance.clients.ssh import CommandResult, SSHRunner
 from defining_acceptance.reporting import report
+from defining_acceptance.utils import CleanupStack
 
 if TYPE_CHECKING:
     from defining_acceptance.clients.openstack import OpenStackClient
@@ -66,7 +66,7 @@ def create_vm(
     openstack_client: OpenStackClient,
     testbed: TestbedConfig,
     ssh_runner: SSHRunner,
-    request,
+    cleanup_stack: CleanupStack,
     *,
     network_name: str | None = None,
     security_groups: list[str] | None = None,
@@ -111,8 +111,12 @@ def create_vm(
 
     with report.step(f"Creating keypair {keypair_name!r}"):
         private_key = openstack_client.keypair_create(keypair_name)
+        cleanup_stack.add(openstack_client.keypair_delete, keypair_name)
     key_path = f"/tmp/{keypair_name}.pem"
     ssh_runner.write_file(primary_ip, key_path, private_key)
+    cleanup_stack.add(
+        ssh_runner.run, primary_ip, f"rm -f {key_path}", attach_output=False
+    )
     ssh_runner.run(primary_ip, f"chmod 600 {key_path}", attach_output=False)
 
     server = openstack_client.server_create(
@@ -126,6 +130,7 @@ def create_vm(
         timeout=300,
     )
     server_id = server["id"]
+    cleanup_stack.add(openstack_client.server_delete, server_id)
 
     # Extract the first fixed IP from any network.
     internal_ip = ""
@@ -140,9 +145,11 @@ def create_vm(
     floating_ip = ""
     if with_floating_ip:
         fip = openstack_client.floating_ip_create(external_net)
+        cleanup_stack.add(
+            openstack_client.floating_ip_delete, fip["floating_ip_address"]
+        )
         floating_ip = fip["floating_ip_address"]
         openstack_client.floating_ip_add(server_id, floating_ip)
-
         if poll_ssh:
             with report.step(f"Waiting for SSH on VM at {floating_ip}"):
                 wait_for_vm_ssh(ssh_runner, primary_ip, floating_ip, key_path)
@@ -158,16 +165,4 @@ def create_vm(
         "network_name": network_name,
     }
 
-    def _cleanup() -> None:
-        if floating_ip:
-            with suppress(Exception):
-                openstack_client.floating_ip_delete(floating_ip)
-        with suppress(Exception):
-            openstack_client.server_delete(server_id)
-        with suppress(Exception):
-            openstack_client.keypair_delete(keypair_name)
-        with suppress(Exception):
-            ssh_runner.run(primary_ip, f"rm -f {key_path}", attach_output=False)
-
-    request.addfinalizer(_cleanup)
     return resources

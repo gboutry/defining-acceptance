@@ -23,7 +23,7 @@ def test_internal_traffic_encryption():
 
 @given("a second VM is running on the internal network")
 def setup_two_vms_internal(
-    demo_os_runner, testbed, ssh_runner, running_vm, second_vm, request
+    demo_os_runner, testbed, ssh_runner, running_vm, second_vm, cleanup_stack,
 ):
     """Create a second VM on the same internal network as the Background VM."""
     if MOCK_MODE:
@@ -39,7 +39,7 @@ def setup_two_vms_internal(
         demo_os_runner,
         testbed,
         ssh_runner,
-        request,
+        cleanup_stack,
         network_name=running_vm.get("network_name"),
         with_floating_ip=False,
     )

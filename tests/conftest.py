@@ -6,6 +6,7 @@ from typing import Generator
 import typing
 from unittest.mock import MagicMock
 
+from defining_acceptance.utils import CleanupStack
 import pytest
 from pytest_bdd import given
 
@@ -368,6 +369,17 @@ def tempest_runner(
             ).check()
 
     return _run
+
+
+@pytest.fixture(scope="function")
+def cleanup_stack(
+    request: pytest.FixtureRequest,
+) -> Generator[CleanupStack, None, None]:
+    stack = CleanupStack()
+    try:
+        yield stack
+    finally:
+        request.addfinalizer(stack.cleanup)
 
 
 # ── Shared step definitions ───────────────────────────────────────────────────
