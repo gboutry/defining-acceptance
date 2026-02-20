@@ -211,9 +211,12 @@ class OpenStackClient:
     ) -> dict:
         cmd = (
             f"security group rule create {group}"
-            f" --direction {direction}"
             f" --ethertype {ethertype}"
         )
+        if direction == "ingress":
+            cmd += " --ingress"
+        elif direction == "egress":
+            cmd += " --egress"
         if protocol:
             cmd += f" --protocol {protocol}"
         if dst_port:
