@@ -113,7 +113,7 @@ def _create_vm_with_volume(
         networks[0],
     )["Name"]
     external_net = next(
-        (n for n in networks if "external" in n["Name"].lower()),
+        (n for n in networks if "external-network" == n["Name"].lower()),
         networks[0],
     )["Name"]
 

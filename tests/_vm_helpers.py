@@ -105,7 +105,7 @@ def create_vm(
         )["Name"]
 
     external_net = next(
-        (n for n in all_networks if "external" in n["Name"].lower()),
+        (n for n in all_networks if "external-network" == n["Name"].lower()),
         all_networks[0],
     )["Name"]
 
