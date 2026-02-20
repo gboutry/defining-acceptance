@@ -78,6 +78,8 @@ def setup_vm_restricted_access(
     defer(
         demo_os_runner.run, f"server remove security group {server_id} {sg_name}"
     )
+    # Remove the default security group from the VM to ensure only the restricted group is applied.
+    demo_os_runner.run(f"server remove security group {server_id} default").check()
 
 
 @pytest.fixture
