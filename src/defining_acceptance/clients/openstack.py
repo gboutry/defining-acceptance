@@ -250,7 +250,7 @@ class OpenStackClient:
 
     # ── Keypair ───────────────────────────────────────────────────────────────
 
-    def keypair_create(self, name: str, public_key: str | None = None) -> dict:
+    def keypair_create(self, name: str, public_key: str | None = None) -> str:
         cmd = f"keypair create {name}"
         remote_path: str | None = None
         if public_key is not None:
@@ -259,7 +259,9 @@ class OpenStackClient:
             cmd += f" --public-key {remote_path}"
         with report.step(f"Create keypair {name!r}"):
             try:
-                return self._run_json(cmd)
+                ret = self._run(cmd)
+                ret.check()
+                return ret.stdout.strip()
             finally:
                 if remote_path is not None:
                     self._run(f"rm -f {remote_path}")

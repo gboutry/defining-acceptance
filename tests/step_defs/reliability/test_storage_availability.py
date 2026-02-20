@@ -6,10 +6,11 @@ import uuid
 from contextlib import suppress
 
 from defining_acceptance.clients.openstack import OpenStackClient
+from defining_acceptance.testbed import TestbedConfig
 import pytest
 from pytest_bdd import given, scenario, then, when
 
-from defining_acceptance.clients.ssh import CommandResult
+from defining_acceptance.clients.ssh import CommandResult, SSHRunner
 from defining_acceptance.reporting import report
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
@@ -79,7 +80,7 @@ def _wait_for_ssh(
 
 
 def _create_vm_with_volume(
-    openstack_client: OpenStackClient, testbed, ssh_runner, request
+    openstack_client: OpenStackClient, testbed: TestbedConfig, ssh_runner: SSHRunner, request
 ) -> dict:
     """Create a VM with a volume attached and a floating IP; register cleanup."""
     uid = uuid.uuid4().hex[:8]
@@ -111,8 +112,7 @@ def _create_vm_with_volume(
 
     # Create keypair; OpenStack generates the private key, returned only once.
     with report.step(f"Creating keypair {keypair_name!r}"):
-        kp = openstack_client.keypair_create(keypair_name)
-    private_key = kp.get("private_key") or kp.get("Private Key", "")
+        private_key = openstack_client.keypair_create(keypair_name)
     key_path = f"/tmp/{keypair_name}.pem"
     ssh_runner.write_file(primary_ip, key_path, private_key)
     ssh_runner.run(primary_ip, f"chmod 600 {key_path}", attach_output=False)

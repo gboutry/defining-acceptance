@@ -110,8 +110,7 @@ def create_vm(
     )["Name"]
 
     with report.step(f"Creating keypair {keypair_name!r}"):
-        kp = openstack_client.keypair_create(keypair_name)
-    private_key = kp.get("private_key") or kp.get("Private Key", "")
+        private_key = openstack_client.keypair_create(keypair_name)
     key_path = f"/tmp/{keypair_name}.pem"
     ssh_runner.write_file(primary_ip, key_path, private_key)
     ssh_runner.run(primary_ip, f"chmod 600 {key_path}", attach_output=False)
