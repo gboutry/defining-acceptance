@@ -56,7 +56,7 @@ def setup_running_vm(
             resources["primary_ip"],
             resources["floating_ip"],
             resources["key_path"],
-            "sudo apt-get install -y iperf3 -qq 2>/dev/null || true",
+            "sudo apt update && sudo apt-get install -y iperf3 -qq 2>/dev/null || true",
             timeout=120,
         )
 
