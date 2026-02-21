@@ -61,7 +61,8 @@ def setup_vm_restricted_access(
     # Delete the auto-created allow-all egress rules so egress is blocked.
     existing_rules = demo_os_runner.security_group_rule_list(sg_id)
     for rule in existing_rules:
-        if rule.get("direction") == "egress":
+        direction = rule.get("Direction") or rule.get("direction", "")
+        if direction == "egress":
             with suppress(Exception):
                 demo_os_runner.security_group_rule_delete(
                     rule.get("ID") or rule.get("id")
