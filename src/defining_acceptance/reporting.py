@@ -28,8 +28,7 @@ class ReportAdapter:
         cb = self._event_callback
         if cb is not None:
             cb("step", f"{title} - start", ts)
-        else:
-            logger.info("STEP[start]: %s", title)
+        logger.info("STEP[start]: %s", title)
         try:
             yield
         finally:
@@ -37,8 +36,7 @@ class ReportAdapter:
             cb = self._event_callback
             if cb is not None:
                 cb("step", f"{title} - end", ts)
-            else:
-                logger.info("STEP[end]: %s", title)
+            logger.info("STEP[end]: %s", title)
 
     def note(self, message: str) -> None:
         ts = datetime.now()

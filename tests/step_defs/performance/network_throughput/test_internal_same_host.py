@@ -3,14 +3,14 @@
 import json
 import os
 
-from defining_acceptance.clients.openstack import OpenStackClient
-from defining_acceptance.clients.ssh import SSHRunner
-from defining_acceptance.testbed import TestbedConfig
-from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
+from defining_acceptance.clients.openstack import OpenStackClient
+from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.reporting import report
+from defining_acceptance.testbed import TestbedConfig
+from defining_acceptance.utils import DeferStack
 from tests._vm_helpers import create_vm, vm_ssh
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
@@ -74,7 +74,7 @@ def setup_vms_same_host(
             sg = demo_os_runner.server_group_create(
                 f"affinity-{running_vm['server_name']}", "soft-affinity"
             )
-            sg_id = sg["id"]
+            sg_id = sg.id
             defer(demo_os_runner.server_group_delete, sg_id)
 
     resources = create_vm(

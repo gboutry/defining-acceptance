@@ -19,7 +19,11 @@ def upload(deferred_dir: Path, to_url: str) -> int:
     from defining_acceptance.clients.test_observer_client import Client
     from defining_acceptance.clients.test_observer_client.api.test_executions import (
         patch_test_execution_v1_test_executions_id_patch as patch_api,
+    )
+    from defining_acceptance.clients.test_observer_client.api.test_executions import (
         post_results_v1_test_executions_id_test_results_post as post_api,
+    )
+    from defining_acceptance.clients.test_observer_client.api.test_executions import (
         start_test_execution_v1_test_executions_start_test_put as start_api,
     )
     from defining_acceptance.clients.test_observer_client.models.start_snap_test_execution_request import (

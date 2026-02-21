@@ -1,37 +1,47 @@
-"""OpenStack CLI client executed via SSH on the primary control node."""
+"""OpenStack client backed by the openstacksdk Python library."""
 
 from __future__ import annotations
 
-import json
 import time
-from typing import Any
+from typing import cast
 
-from defining_acceptance.clients.ssh import CommandResult, SSHRunner
-from defining_acceptance.reporting import report
-from defining_acceptance.testbed import MachineConfig
+import openstack
+import openstack.connection
+from openstack.block_storage.v3._proxy import Proxy as BlockStorageProxy
+from openstack.block_storage.v3.volume import Volume
+from openstack.compute.v2._proxy import Proxy as ComputeProxy
+from openstack.compute.v2.flavor import Flavor
+from openstack.compute.v2.keypair import Keypair
+from openstack.compute.v2.server import Server
+from openstack.compute.v2.server_group import ServerGroup
+from openstack.identity.v3._proxy import Proxy as IdentityProxy
+from openstack.identity.v3.endpoint import Endpoint
+from openstack.image.v2._proxy import Proxy as ImageProxy
+from openstack.image.v2.image import Image
+from openstack.network.v2._proxy import Proxy as NetworkProxy
+from openstack.network.v2.floating_ip import FloatingIP
+from openstack.network.v2.network import Network
+from openstack.network.v2.security_group import SecurityGroup
+from openstack.network.v2.security_group_rule import SecurityGroupRule
 
 
 class OpenStackClient:
-    def __init__(
-        self,
-        ssh: SSHRunner,
-        machine: MachineConfig,
-    ) -> None:
-        self._ssh = ssh
-        self._machine = machine
+    """Interact with OpenStack services using the Python SDK."""
 
-    def run(self, subcommand: str, timeout: int = 120) -> CommandResult:
-        return self._ssh.run(self._machine.ip, f"openstack {subcommand}", timeout)
-
-    def run_json(self, subcommand: str, timeout: int = 120) -> Any:
-        result = self.run(f"{subcommand} -f json", timeout)
-        result.check()
-        return json.loads(result.stdout)
+    def __init__(self, connection: openstack.connection.Connection) -> None:
+        self._conn = connection
+        self._compute: ComputeProxy = cast(ComputeProxy, connection.compute)
+        self._identity: IdentityProxy = cast(IdentityProxy, connection.identity)
+        self._network: NetworkProxy = cast(NetworkProxy, connection.network)
+        self._block_storage: BlockStorageProxy = cast(
+            BlockStorageProxy, connection.block_storage
+        )
+        self._image: ImageProxy = cast(ImageProxy, connection.image)
 
     # ── Catalog validation ────────────────────────────────────────────────────
 
-    def endpoint_list(self) -> list[dict]:
-        return self.run_json("endpoint list")
+    def endpoint_list(self) -> list[Endpoint]:
+        return list(self._identity.endpoints())
 
     # ── Compute (server) ──────────────────────────────────────────────────────
 
@@ -46,40 +56,38 @@ class OpenStackClient:
         server_group_id: str | None = None,
         wait: bool = True,
         timeout: int = 300,
-    ) -> dict:
-        cmd = (
-            f"server create {name}"
-            f" --flavor {flavor}"
-            f" --image {image}"
-            f" --network {network}"
-        )
+    ) -> Server:
+        attrs: dict = {
+            "name": name,
+            "flavor_id": flavor,
+            "image_id": image,
+            "networks": [{"uuid": network}],
+        }
         if key_name is not None:
-            cmd += f" --key-name {key_name}"
+            attrs["key_name"] = key_name
         if security_groups:
-            for sg in security_groups:
-                cmd += f" --security-group {sg}"
+            attrs["security_groups"] = [{"name": sg} for sg in security_groups]
         if server_group_id is not None:
-            cmd += f" --hint group={server_group_id}"
+            attrs["scheduler_hints"] = {"group": server_group_id}
+
+        server = self._compute.create_server(**attrs)
         if wait:
-            cmd += " --wait"
-        with report.step(f"Create server {name!r}"):
-            return self.run_json(cmd, timeout)
+            server = self._compute.wait_for_server(server, wait=timeout)
+        return server
 
-    def server_show(self, name_or_id: str) -> dict:
-        return self.run_json(f"server show {name_or_id}")
+    def server_show(self, name_or_id: str) -> Server:
+        return self._compute.get_server(name_or_id)
 
-    def server_delete(self, name_or_id: str, wait: bool = True) -> CommandResult:
-        cmd = f"server delete {name_or_id}"
+    def server_delete(self, name_or_id: str, wait: bool = True) -> None:
+        self._compute.delete_server(name_or_id)
         if wait:
-            cmd += " --wait"
-        with report.step(f"Delete server {name_or_id!r}"):
-            return self.run(cmd).check()
+            self._compute.wait_for_delete(self._compute.get_server(name_or_id))
 
-    def server_list(self) -> list[dict]:
-        return self.run_json("server list")
+    def server_list(self) -> list[Server]:
+        return list(self._compute.servers())
 
     def server_status(self, name_or_id: str) -> str:
-        return self.server_show(name_or_id)["status"]
+        return self.server_show(name_or_id).status
 
     def server_reboot(
         self,
@@ -87,42 +95,47 @@ class OpenStackClient:
         hard: bool = False,
         wait: bool = True,
         timeout: int = 120,
-    ) -> CommandResult:
-        cmd = f"server reboot {name_or_id}"
-        if hard:
-            cmd += " --hard"
+    ) -> None:
+        reboot_type = "HARD" if hard else "SOFT"
+        self._compute.reboot_server(name_or_id, reboot_type)
         if wait:
-            cmd += " --wait"
-        with report.step(f"Reboot server {name_or_id!r}"):
-            return self.run(cmd, timeout).check()
+            self.wait_for_server_status(name_or_id, timeout=timeout)
 
     def wait_for_server_status(
         self,
         name_or_id: str,
         status: str = "ACTIVE",
         timeout: int = 300,
-    ) -> dict:
+    ) -> Server:
         """Poll server status until it matches *status* or *timeout* elapses."""
         deadline = time.monotonic() + timeout
         while True:
             server = self.server_show(name_or_id)
-            if server["status"] == status:
+            if server.status == status:
                 return server
             if time.monotonic() > deadline:
                 raise TimeoutError(
                     f"Server {name_or_id!r} did not reach status {status!r} "
-                    f"within {timeout}s. Current: {server['status']!r}"
+                    f"within {timeout}s. Current: {server.status!r}"
                 )
             time.sleep(10)
 
+    def server_add_security_group(self, server: str, security_group: str) -> None:
+        """Add a security group to a server."""
+        self._compute.add_security_group_to_server(server, security_group)
+
+    def server_remove_security_group(self, server: str, security_group: str) -> None:
+        """Remove a security group from a server."""
+        self._compute.remove_security_group_from_server(server, security_group)
+
     # ── Server groups ─────────────────────────────────────────────────────────
 
-    def server_group_create(self, name: str, policy: str) -> dict:
+    def server_group_create(self, name: str, policy: str) -> ServerGroup:
         """Create a server group (e.g. policy='soft-affinity')."""
-        return self.run_json(f"server group create {name} --policy {policy}")
+        return self._compute.create_server_group(name=name, policy=policy)
 
-    def server_group_delete(self, name_or_id: str) -> CommandResult:
-        return self.run(f"server group delete {name_or_id}").check()
+    def server_group_delete(self, name_or_id: str) -> None:
+        self._compute.delete_server_group(name_or_id)
 
     # ── Volume ────────────────────────────────────────────────────────────────
 
@@ -132,72 +145,60 @@ class OpenStackClient:
         size: int,
         wait: bool = True,
         timeout: int = 120,
-    ) -> dict:
-        cmd = f"volume create {name} --size {size}"
-        with report.step(f"Create volume {name!r}"):
-            result = self.run_json(cmd, timeout)
-            while True:
-                if not wait or result.get("status") == "available":
-                    return result
-                if time.monotonic() > time.monotonic() + timeout:
-                    raise TimeoutError(
-                        f"Volume {name!r} did not become available within {timeout}s. "
-                        f"Current status: {result.get('status')!r}"
-                    )
-                time.sleep(5)
-                result = self.run_json(
-                    f"volume show {result['id']}"
-                )  # Refresh volume status
+    ) -> Volume:
+        volume = self._block_storage.create_volume(name=name, size=size)
+        if wait:
+            volume = self._block_storage.wait_for_status(
+                volume, status="available", wait=timeout
+            )
+        return volume
 
-    def volume_show(self, name_or_id: str) -> dict:
-        return self.run_json(f"volume show {name_or_id}")
+    def volume_show(self, name_or_id: str) -> Volume:
+        return self._block_storage.get_volume(name_or_id)
 
-    def volume_delete(self, name_or_id: str) -> CommandResult:
-        with report.step(f"Delete volume {name_or_id!r}"):
-            return self.run(f"volume delete {name_or_id}").check()
+    def volume_delete(self, name_or_id: str) -> None:
+        self._block_storage.delete_volume(name_or_id)
 
     def volume_status(self, name_or_id: str) -> str:
-        return self.volume_show(name_or_id)["status"]
+        return self.volume_show(name_or_id).status
 
-    def volume_attach(self, server: str, volume: str) -> CommandResult:
-        with report.step(f"Attach volume {volume!r} to server {server!r}"):
-            return self.run(f"server add volume {server} {volume}").check()
+    def volume_attach(self, server: str, volume: str) -> None:
+        self._compute.create_volume_attachment(server, volume_id=volume)
 
-    def volume_detach(self, server: str, volume: str) -> CommandResult:
-        with report.step(f"Detach volume {volume!r} from server {server!r}"):
-            return self.run(f"server remove volume {server} {volume}").check()
+    def volume_detach(self, server: str, volume: str) -> None:
+        # Find the attachment for this volume on this server
+        for attachment in self._compute.volume_attachments(server):
+            if attachment.volume_id == volume:
+                self._compute.delete_volume_attachment(attachment.id, server)
+                return
+        raise ValueError(f"Volume {volume!r} is not attached to server {server!r}")
 
     # ── Network ───────────────────────────────────────────────────────────────
 
-    def floating_ip_create(self, network: str) -> dict:
-        with report.step(f"Create floating IP on network {network!r}"):
-            return self.run_json(f"floating ip create {network}")
+    def floating_ip_create(self, network: str) -> FloatingIP:
+        return self._network.create_ip(floating_network_id=network)
 
-    def floating_ip_add(self, server: str, floating_ip: str) -> CommandResult:
-        with report.step(f"Add floating IP {floating_ip!r} to server {server!r}"):
-            return self.run(f"server add floating ip {server} {floating_ip}").check()
+    def floating_ip_add(self, server: str, floating_ip: str) -> None:
+        self._compute.add_floating_ip_to_server(server, floating_ip)
 
-    def floating_ip_delete(self, floating_ip: str) -> CommandResult:
-        return self.run(f"floating ip delete {floating_ip}").check()
+    def floating_ip_delete(self, floating_ip: str) -> None:
+        self._network.delete_ip(floating_ip)
 
-    def network_list(self) -> list[dict]:
-        return self.run_json("network list")
+    def network_list(self) -> list[Network]:
+        return list(self._network.networks())
 
-    def security_group_list(self) -> list[dict]:
-        return self.run_json("security group list")
+    def security_group_list(self) -> list[SecurityGroup]:
+        return list(self._network.security_groups())
 
-    def security_group_create(self, name: str, description: str = "") -> dict:
-        cmd = f"security group create {name}"
-        if description:
-            cmd += f" --description '{description}'"
-        return self.run_json(cmd)
+    def security_group_create(self, name: str, description: str = "") -> SecurityGroup:
+        return self._network.create_security_group(name=name, description=description)
 
-    def security_group_delete(self, name_or_id: str) -> CommandResult:
-        return self.run(f"security group delete {name_or_id}").check()
+    def security_group_delete(self, name_or_id: str) -> None:
+        self._network.delete_security_group(name_or_id)
 
-    def security_group_rule_list(self, security_group: str) -> list[dict]:
-        return self.run_json(
-            f"security group rule list {security_group}"
+    def security_group_rule_list(self, security_group: str) -> list[SecurityGroupRule]:
+        return list(
+            self._network.security_group_rules(security_group_id=security_group)
         )
 
     def security_group_rule_create(
@@ -208,77 +209,76 @@ class OpenStackClient:
         dst_port: str | None = None,
         remote_ip: str | None = None,
         ethertype: str = "IPv4",
-    ) -> dict:
-        cmd = (
-            f"security group rule create {group}"
-            f" --ethertype {ethertype}"
-        )
-        if direction == "ingress":
-            cmd += " --ingress"
-        elif direction == "egress":
-            cmd += " --egress"
+    ) -> SecurityGroupRule:
+        attrs: dict = {
+            "security_group_id": group,
+            "direction": direction,
+            "ethertype": ethertype,
+        }
         if protocol:
-            cmd += f" --protocol {protocol}"
+            attrs["protocol"] = protocol
         if dst_port:
-            cmd += f" --dst-port {dst_port}"
+            # The SDK expects port_range_min and port_range_max
+            if ":" in dst_port:
+                low, high = dst_port.split(":", 1)
+                attrs["port_range_min"] = int(low)
+                attrs["port_range_max"] = int(high)
+            else:
+                attrs["port_range_min"] = int(dst_port)
+                attrs["port_range_max"] = int(dst_port)
         if remote_ip:
-            cmd += f" --remote-ip {remote_ip}"
-        return self.run_json(cmd)
+            attrs["remote_ip_prefix"] = remote_ip
+        return self._network.create_security_group_rule(**attrs)
 
-    def security_group_rule_delete(self, rule_id: str) -> CommandResult:
-        return self.run(f"security group rule delete {rule_id}").check()
+    def security_group_rule_delete(self, rule_id: str) -> None:
+        self._network.delete_security_group_rule(rule_id)
 
     # ── Neutron resources ─────────────────────────────────────────────────────
 
-    def network_create(self, name: str) -> dict:
-        return self.run_json(f"network create {name}")
+    def network_create(self, name: str) -> Network:
+        return self._network.create_network(name=name)
 
-    def network_delete(self, name_or_id: str) -> CommandResult:
-        return self.run(f"network delete {name_or_id}").check()
+    def network_delete(self, name_or_id: str) -> None:
+        self._network.delete_network(name_or_id)
 
-    def subnet_create(self, name: str, network: str, cidr: str) -> dict:
-        return self.run_json(
-            f"subnet create {name} --network {network} --subnet-range {cidr}"
-        )
+    def subnet_create(self, name: str, network: str, cidr: str):
+        return self._network.create_subnet(name=name, network_id=network, cidr=cidr)
 
-    def subnet_delete(self, name_or_id: str) -> CommandResult:
-        return self.run(f"subnet delete {name_or_id}").check()
+    def subnet_delete(self, name_or_id: str) -> None:
+        self._network.delete_subnet(name_or_id)
 
-    def router_create(self, name: str, external_gateway: str | None = None) -> dict:
-        cmd = f"router create {name}"
+    def router_create(self, name: str, external_gateway: str | None = None):
+        attrs: dict = {"name": name}
         if external_gateway:
-            cmd += f" --external-gateway {external_gateway}"
-        return self.run_json(cmd)
+            attrs["external_gateway_info"] = {"network_id": external_gateway}
+        return self._network.create_router(**attrs)
 
-    def router_delete(self, name_or_id: str) -> CommandResult:
-        return self.run(f"router delete {name_or_id}").check()
+    def router_delete(self, name_or_id: str) -> None:
+        self._network.delete_router(name_or_id)
 
-    def router_add_subnet(self, router: str, subnet: str) -> CommandResult:
-        return self.run(f"router add subnet {router} {subnet}").check()
+    def router_add_subnet(self, router: str, subnet: str) -> None:
+        self._network.add_interface_to_router(router, subnet_id=subnet)
 
-    def router_remove_subnet(self, router: str, subnet: str) -> CommandResult:
-        return self.run(f"router remove subnet {router} {subnet}").check()
+    def router_remove_subnet(self, router: str, subnet: str) -> None:
+        self._network.remove_interface_from_router(router, subnet_id=subnet)
 
     # ── Keypair ───────────────────────────────────────────────────────────────
 
-    def keypair_create(self, name: str) -> str:
-        with report.step(f"Create keypair {name!r}"):
-            ret = self.run(f"keypair create {name}")
-            ret.check()
-            return ret.stdout
+    def keypair_create(self, name: str) -> Keypair:
+        return self._compute.create_keypair(name=name)
 
-    def keypair_delete(self, name: str) -> CommandResult:
-        return self.run(f"keypair delete {name}").check()
+    def keypair_delete(self, name: str) -> None:
+        self._compute.delete_keypair(name)
 
     # ── Image ─────────────────────────────────────────────────────────────────
 
-    def image_list(self) -> list[dict]:
-        return self.run_json("image list")
+    def image_list(self) -> list[Image]:
+        return list(self._image.images())
 
-    def image_show(self, name_or_id: str) -> dict:
-        return self.run_json(f"image show {name_or_id}")
+    def image_show(self, name_or_id: str) -> Image:
+        return self._image.get_image(name_or_id)
 
     # ── Flavor ────────────────────────────────────────────────────────────────
 
-    def flavor_list(self) -> list[dict]:
-        return self.run_json("flavor list")
+    def flavor_list(self) -> list[Flavor]:
+        return list(self._compute.flavors())

@@ -3,10 +3,10 @@
 import os
 import re
 
-from defining_acceptance.clients.ssh import SSHRunner
 import pytest
 from pytest_bdd import scenario, then, when
 
+from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.reporting import report
 from tests._vm_helpers import vm_ssh
 
@@ -33,7 +33,9 @@ def download_result() -> dict:
 
 @pytest.fixture
 @when("I download data from an external source")
-def download_from_external(running_vm: dict, ssh_runner: SSHRunner, download_result: dict):
+def download_from_external(
+    running_vm: dict, ssh_runner: SSHRunner, download_result: dict
+):
     """Download a 10 MB test payload from Cloudflare and measure speed.
 
     ``curl`` reports the download speed in bytes/second via the

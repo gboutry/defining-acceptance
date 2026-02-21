@@ -3,14 +3,14 @@
 import os
 import uuid
 
-from defining_acceptance.clients.openstack import OpenStackClient
-from defining_acceptance.testbed import TestbedConfig
-from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
+from defining_acceptance.clients.openstack import OpenStackClient
 from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.reporting import report
+from defining_acceptance.testbed import TestbedConfig
+from defining_acceptance.utils import DeferStack
 from tests._vm_helpers import create_vm, vm_ssh
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
@@ -64,7 +64,7 @@ def _create_vm_with_volume(
     flavors = openstack_client.flavor_list()
     assert flavors, "No flavors available"
     try:
-        flavor = next(f for f in flavors if f["RAM"] >= 1024)["Name"]
+        flavor = next(f for f in flavors if f.ram >= 1024).name
     except StopIteration:
         assert False, "No suitable flavor with >=1GB RAM found"
 

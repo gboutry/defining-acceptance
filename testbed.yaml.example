@@ -11,6 +11,8 @@ deployment:
   manifest: /home/ubuntu/manifest.yaml  # Optional: path to sunbeam manifest on the target machine
   provisioned: false      # Optional (default: false). Set to true if the cloud is already
                           # deployed — provisioning tests will be skipped.
+  clouds_yaml: /path/to/clouds.yaml  # Optional: path to clouds.yaml for OpenStack SDK access.
+                                     # Required when deployment.provisioned is true.
 
 # Juju controller configuration.
 # Omit this section entirely to let sunbeam bootstrap and manage its own controller.

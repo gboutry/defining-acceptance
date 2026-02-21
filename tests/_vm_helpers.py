@@ -14,7 +14,7 @@ import uuid
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from defining_acceptance.clients.ssh import CommandResult, SSHRunner, SSHError
+from defining_acceptance.clients.ssh import CommandResult, SSHError, SSHRunner
 from defining_acceptance.reporting import report
 from defining_acceptance.utils import DeferStack
 
@@ -105,31 +105,31 @@ def create_vm(
         flavors = openstack_client.flavor_list()
         assert flavors, "No flavors available"
         flavor = next(
-            flavor
-            for flavor in sorted(flavors, key=lambda f: f["RAM"])
-            if flavor["RAM"] >= 1024 and "sev" not in flavor["Name"].lower()
-        )["Name"]
+            f
+            for f in sorted(flavors, key=lambda f: f.ram)
+            if f.ram >= 1024 and "sev" not in f.name.lower()
+        ).id
     image = next(
-        (i for i in images if "ubuntu" in i["Name"].lower()),
+        (i for i in images if "ubuntu" in i.name.lower()),
         images[0],
-    )["ID"]
+    ).id
 
     if network_name is None:
         network_name = next(
-            (n for n in all_networks if "external" not in n["Name"].lower()),
+            (n for n in all_networks if "external" not in n.name.lower()),
             all_networks[0],
-        )["Name"]
+        ).id
 
     external_net = next(
-        (n for n in all_networks if "external-network" == n["Name"].lower()),
+        (n for n in all_networks if "external-network" == n.name.lower()),
         all_networks[0],
-    )["Name"]
+    ).id
 
     with report.step(f"Creating keypair {keypair_name!r}"):
-        private_key = openstack_client.keypair_create(keypair_name)
+        keypair = openstack_client.keypair_create(keypair_name)
         defer(openstack_client.keypair_delete, keypair_name)
     key_path = str(Path(tempfile.gettempdir()) / f"{keypair_name}.pem")
-    Path(key_path).write_text(private_key)
+    Path(key_path).write_text(keypair.private_key)
     os.chmod(key_path, stat.S_IRUSR)
     defer(os.remove, key_path)
 
@@ -143,21 +143,21 @@ def create_vm(
         server_group_id=server_group_id,
         timeout=300,
     )
-    server_id = server["id"]
+    server_id = server.id
     defer(openstack_client.server_delete, server_id)
 
     # Extract the first fixed IP from any network.
     internal_ip = ""
-    for net_addrs in server.get("addresses", {}).values():
+    for net_addrs in (server.addresses or {}).values():
         if net_addrs:
-            internal_ip = net_addrs[0]
+            internal_ip = net_addrs[0]["addr"]
             break
 
     floating_ip = ""
     if with_floating_ip:
         fip = openstack_client.floating_ip_create(external_net)
-        defer(openstack_client.floating_ip_delete, fip["floating_ip_address"])
-        floating_ip = fip["floating_ip_address"]
+        defer(openstack_client.floating_ip_delete, fip.floating_ip_address)
+        floating_ip = fip.floating_ip_address
         openstack_client.floating_ip_add(server_id, floating_ip)
         if poll_ssh:
             proxy_jump_host = testbed.ssh.proxy_jump if testbed.ssh else None

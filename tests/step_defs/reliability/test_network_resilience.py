@@ -3,12 +3,12 @@
 import os
 from contextlib import suppress
 
-from defining_acceptance.clients.openstack import OpenStackClient
-from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given, scenario, then, when
 
+from defining_acceptance.clients.openstack import OpenStackClient
 from defining_acceptance.reporting import report
+from defining_acceptance.utils import DeferStack
 from tests._vm_helpers import vm_ssh
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
@@ -51,7 +51,7 @@ def setup_vm_restricted_access(
     server_id = running_vm["server_id"]
 
     # Remove the default security group from the VM to ensure only the restricted group is applied.
-    demo_os_runner.run(f"server remove security group {server_id} default").check()
+    demo_os_runner.server_remove_security_group(server_id, "default")
     sg = demo_os_runner.security_group_create(
         sg_name, description="Blocks ICMP egress for ACL test"
     )
@@ -61,12 +61,9 @@ def setup_vm_restricted_access(
     # Delete the auto-created allow-all egress rules so egress is blocked.
     existing_rules = demo_os_runner.security_group_rule_list(sg_id)
     for rule in existing_rules:
-        direction = rule.get("Direction") or rule.get("direction", "")
-        if direction == "egress":
+        if rule.direction == "egress":
             with suppress(Exception):
-                demo_os_runner.security_group_rule_delete(
-                    rule.get("ID") or rule.get("id")
-                )
+                demo_os_runner.security_group_rule_delete(rule.id)
 
     # Allow SSH ingress so we can still reach the VM.
     demo_os_runner.security_group_rule_create(
@@ -77,8 +74,8 @@ def setup_vm_restricted_access(
     running_vm["restricted_sg_name"] = sg_name
 
     # Add the restricted group to the VM.
-    demo_os_runner.run(f"server add security group {server_id} {sg_name}").check()
-    defer(demo_os_runner.run, f"server remove security group {server_id} {sg_name}")
+    demo_os_runner.server_add_security_group(server_id, sg_name)
+    defer(demo_os_runner.server_remove_security_group, server_id, sg_name)
 
 
 @pytest.fixture

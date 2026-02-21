@@ -15,6 +15,7 @@ class DeploymentConfig:
     revision: Optional[int] = None
     manifest: Optional[str] = None
     provisioned: bool = False
+    clouds_yaml: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> DeploymentConfig:
@@ -49,6 +50,14 @@ class DeploymentConfig:
         if not isinstance(provisioned, bool):
             raise ValueError("deployment.provisioned must be a boolean")
 
+        clouds_yaml = data.get("clouds_yaml", data.get("clouds-yaml"))
+        if clouds_yaml is not None and (
+            not isinstance(clouds_yaml, str) or not clouds_yaml.strip()
+        ):
+            raise ValueError(
+                "deployment.clouds_yaml must be a non-empty string when set"
+            )
+
         return cls(
             provider=provider,
             topology=topology,
@@ -56,6 +65,7 @@ class DeploymentConfig:
             revision=revision,
             manifest=manifest,
             provisioned=provisioned,
+            clouds_yaml=clouds_yaml,
         )
 
 

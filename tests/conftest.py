@@ -1,12 +1,11 @@
 import os
 import shutil
 import tempfile
+import typing
 from pathlib import Path
 from typing import Generator
-import typing
 from unittest.mock import MagicMock
 
-from defining_acceptance.utils import DeferStack
 import pytest
 from pytest_bdd import given
 
@@ -14,7 +13,7 @@ from defining_acceptance.clients import OpenStackClient, SSHRunner, SunbeamClien
 from defining_acceptance.clients.ssh import CommandResult
 from defining_acceptance.reporting import report
 from defining_acceptance.testbed import MachineConfig, TestbedConfig
-
+from defining_acceptance.utils import DeferStack
 
 # Set MOCK_MODE=1 to run tests without real infrastructure.
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
@@ -212,43 +211,49 @@ def primary_machine(testbed: TestbedConfig) -> MachineConfig:
 
 
 @pytest.fixture(scope="session")
+def openstack_clouds_yaml(testbed: TestbedConfig) -> str | None:
+    """Path to the clouds.yaml file, from testbed config.
+
+    Returns None if not configured — the ``is_provisioned`` fixture will
+    fail early in that case.
+    """
+    if MOCK_MODE:
+        return None
+    if testbed.deployment and testbed.deployment.clouds_yaml:
+        return testbed.deployment.clouds_yaml
+    return None
+
+
+@pytest.fixture(scope="session")
 def demo_os_runner(
-    testbed: TestbedConfig,
-    ssh_private_key_path: str,
-    session_tmp_dir: Path,
-    primary_machine: MachineConfig,
+    openstack_clouds_yaml: str | None,
 ) -> OpenStackClient:
     """OpenStackClient for the demo (regular) cloud user (OS_CLOUD=sunbeam)."""
     if MOCK_MODE:
         return MagicMock(spec=OpenStackClient)
-    user = (testbed.ssh.user if testbed.ssh else None) or "ubuntu"
-    runner = SSHRunner(
-        user=user,
-        private_key_path=ssh_private_key_path,
-        tmp_dir=session_tmp_dir,
-        env={"OS_CLOUD": "sunbeam"},
+    assert openstack_clouds_yaml is not None, (
+        "deployment.clouds_yaml must be set in testbed.yaml to use OpenStack SDK"
     )
-    return OpenStackClient(ssh=runner, machine=primary_machine)
+    from defining_acceptance.clients.credentials import make_connection
+
+    conn = make_connection(openstack_clouds_yaml, "sunbeam")
+    return OpenStackClient(connection=conn)
 
 
 @pytest.fixture(scope="session")
 def admin_os_runner(
-    testbed: TestbedConfig,
-    ssh_private_key_path: str,
-    session_tmp_dir: Path,
-    primary_machine: MachineConfig,
+    openstack_clouds_yaml: str | None,
 ) -> OpenStackClient:
     """OpenStackClient for the admin (superuser) cloud user (OS_CLOUD=sunbeam-admin)."""
     if MOCK_MODE:
         return MagicMock(spec=OpenStackClient)
-    user = (testbed.ssh.user if testbed.ssh else None) or "ubuntu"
-    runner = SSHRunner(
-        user=user,
-        private_key_path=ssh_private_key_path,
-        tmp_dir=session_tmp_dir,
-        env={"OS_CLOUD": "sunbeam-admin"},
+    assert openstack_clouds_yaml is not None, (
+        "deployment.clouds_yaml must be set in testbed.yaml to use OpenStack SDK"
     )
-    return OpenStackClient(ssh=runner, machine=primary_machine)
+    from defining_acceptance.clients.credentials import make_connection
+
+    conn = make_connection(openstack_clouds_yaml, "sunbeam-admin")
+    return OpenStackClient(connection=conn)
 
 
 # ── Session fixture: provisioning ─────────────────────────────────────────────
