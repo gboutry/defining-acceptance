@@ -382,11 +382,11 @@ def defer(request: pytest.FixtureRequest) -> DeferStack:
 # ── Shared step definitions ───────────────────────────────────────────────────
 
 
-@given("the cloud is configured for sample usage")
-def cloud_configured(demo_os_runner: OpenStackClient) -> None:
-    """Verify the cloud has the basic resources needed to run workloads."""
+@pytest.fixture(scope="session")
+def is_configured_for_sample_usage(demo_os_runner: OpenStackClient) -> bool:
+    """Check if the cloud has the basic resources needed to run workloads."""
     if MOCK_MODE:
-        return
+        return True
     with report.step("Verifying cloud is configured for sample usage"):
         flavors = demo_os_runner.flavor_list()
         assert flavors, "No flavors found — run 'sunbeam configure' first"
@@ -402,16 +402,30 @@ def cloud_configured(demo_os_runner: OpenStackClient) -> None:
             f"{len(images)} image(s), "
             f"{len(networks)} network(s)"
         )
+    return True
 
 
-@given("the cloud is provisioned")
-def provision_cloud(bootstrapped: None, admin_os_runner: OpenStackClient) -> None:
-    """Verify the cloud is up by listing service endpoints."""
+@given("the cloud is configured for sample usage")
+def cloud_configured(is_configured_for_sample_usage: bool) -> None:
+    """Verify the cloud has the basic resources needed to run workloads."""
+    assert is_configured_for_sample_usage, "Cloud is not configured for sample usage"
+
+
+@pytest.fixture(scope="session")
+def is_provisioned(bootstrapped: None, admin_os_runner: OpenStackClient) -> bool:
+    """Check if the cloud is provisioned (bootstrapped)."""
     if MOCK_MODE:
-        return
+        return True
     with report.step("Verifying cloud is provisioned"):
         endpoints = admin_os_runner.endpoint_list()
         assert endpoints, "No service endpoints found — cloud may not be configured"
         report.attach_text(
             "\n".join(e.get("URL", "") for e in endpoints), "Service endpoints"
         )
+    return True
+
+
+@given("the cloud is provisioned")
+def provision_cloud(is_provisioned) -> None:
+    """Verify the cloud is up by listing service endpoints."""
+    assert is_provisioned, "Cloud is not provisioned"
