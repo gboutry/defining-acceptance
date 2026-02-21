@@ -41,12 +41,10 @@ def connect_with_key(running_vm, ssh_runner, ssh_result):
 
     floating_ip = running_vm["floating_ip"]
     key_path = running_vm["key_path"]
-    primary_ip = running_vm["primary_ip"]
 
     with report.step(f"SSH to {floating_ip} with correct key"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             "echo authenticated",
@@ -81,7 +79,6 @@ def connect_without_key(running_vm, ssh_runner, no_key_result):
         return
 
     floating_ip = running_vm["floating_ip"]
-    primary_ip = running_vm["primary_ip"]
 
     with report.step(f"SSH to {floating_ip} without key (expect failure)"):
         # We pass a non-existent key to Ensure no key is offered; the connection must fail.

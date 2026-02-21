@@ -53,7 +53,6 @@ def setup_running_vm(
     with report.step("Installing iperf3 on server VM"):
         vm_ssh(
             ssh_runner,
-            resources["primary_ip"],
             resources["floating_ip"],
             resources["key_path"],
             "sudo apt update && sudo apt-get install -y iperf3 -qq 2>/dev/null || true",
@@ -64,7 +63,6 @@ def setup_running_vm(
     # Start iperf3 in server mode (background, exits on first client).
     vm_ssh(
         ssh_runner,
-        resources["primary_ip"],
         resources["floating_ip"],
         resources["key_path"],
         "iperf3 -s -D -1",  # -D daemonize, -1 exit after one client

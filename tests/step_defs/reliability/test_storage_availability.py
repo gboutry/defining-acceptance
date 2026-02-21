@@ -230,11 +230,9 @@ def verify_volume_read(vm_resources: dict, ssh_runner: SSHRunner):
         return
     floating_ip = vm_resources["floating_ip"]
     key_path = vm_resources["key_path"]
-    primary_ip = vm_resources["primary_ip"]
     with report.step(f"Reading from /dev/vdb on VM at {floating_ip}"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             "sudo dd if=/dev/vdb of=/dev/null bs=1M count=1 status=none && echo ok",
@@ -253,11 +251,9 @@ def verify_volume_write(vm_resources: dict, ssh_runner: SSHRunner):
         return
     floating_ip = vm_resources["floating_ip"]
     key_path = vm_resources["key_path"]
-    primary_ip = vm_resources["primary_ip"]
     with report.step(f"Writing to /dev/vdb on VM at {floating_ip}"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             "sudo dd if=/dev/zero of=/dev/vdb bs=1M count=1 status=none && echo ok",

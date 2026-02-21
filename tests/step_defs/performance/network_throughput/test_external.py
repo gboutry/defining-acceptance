@@ -46,12 +46,10 @@ def download_from_external(running_vm: dict, ssh_runner: SSHRunner, download_res
 
     floating_ip = running_vm["floating_ip"]
     key_path = running_vm["key_path"]
-    primary_ip = running_vm["primary_ip"]
 
     with report.step("Downloading 10 MB test payload from external source"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             (

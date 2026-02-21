@@ -96,12 +96,10 @@ def attempt_blocked_connection(running_vm, ssh_runner, acl_result):
 
     floating_ip = running_vm["floating_ip"]
     key_path = running_vm["key_path"]
-    primary_ip = running_vm["primary_ip"]
 
     with report.step(f"Attempting to ping 1.1.1.1 from VM at {floating_ip}"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             "ping -c 10 -W 5 1.1.1.1 2>&1; echo exit:$?",
@@ -143,7 +141,6 @@ def resolve_external_hostnames(running_vm, ssh_runner, dns_result):
 
     floating_ip = running_vm["floating_ip"]
     key_path = running_vm["key_path"]
-    primary_ip = running_vm["primary_ip"]
 
     hostnames = ["google.com", "cloudflare.com"]
     results = {}
@@ -151,7 +148,6 @@ def resolve_external_hostnames(running_vm, ssh_runner, dns_result):
         with report.step(f"Resolving {hostname}"):
             r = vm_ssh(
                 ssh_runner,
-                primary_ip,
                 floating_ip,
                 key_path,
                 f"host {hostname} 2>&1; echo exit:$?",
@@ -194,13 +190,11 @@ def vms_communicate(running_vm, second_vm, ssh_runner, comm_result):
 
     floating_ip = running_vm["floating_ip"]
     key_path = running_vm["key_path"]
-    primary_ip = running_vm["primary_ip"]
     target_ip = second_vm["internal_ip"]
 
     with report.step(f"Pinging {target_ip} from VM at {floating_ip}"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             f"ping -c 4 -W 5 {target_ip}",

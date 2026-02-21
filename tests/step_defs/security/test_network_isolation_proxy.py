@@ -59,13 +59,11 @@ def make_web_request(running_vm, ssh_runner, proxy_result):
 
     floating_ip = running_vm["floating_ip"]
     key_path = running_vm["key_path"]
-    primary_ip = running_vm["primary_ip"]
     proxy_url = running_vm["proxy_url"]
 
     with report.step(f"HTTP request via proxy {proxy_url}"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             (

@@ -90,7 +90,6 @@ def setup_vms_same_host(
     with report.step("Installing iperf3 on client VM"):
         vm_ssh(
             ssh_runner,
-            resources["primary_ip"],
             resources["floating_ip"],
             resources["key_path"],
             "sudo apt-get install -y iperf3 -qq 2>/dev/null || true",
@@ -112,12 +111,10 @@ def measure_throughput(
     server_internal_ip = running_vm["internal_ip"]
     client_floating_ip = client_vm["floating_ip"]
     client_key_path = client_vm["key_path"]
-    primary_ip = client_vm["primary_ip"]
 
     with report.step(f"Running iperf3 from client to server ({server_internal_ip})"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             client_floating_ip,
             client_key_path,
             f"iperf3 -c {server_internal_ip} -t 10 -J 2>/dev/null",

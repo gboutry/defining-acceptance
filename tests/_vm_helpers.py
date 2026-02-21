@@ -6,11 +6,15 @@ by any conftest without creating scope or collection conflicts.
 
 from __future__ import annotations
 
+import os
+import stat
+import tempfile
 import time
 import uuid
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from defining_acceptance.clients.ssh import CommandResult, SSHRunner
+from defining_acceptance.clients.ssh import CommandResult, SSHRunner, SSHError
 from defining_acceptance.reporting import report
 from defining_acceptance.utils import DeferStack
 
@@ -21,7 +25,6 @@ if TYPE_CHECKING:
 
 def wait_for_vm_ssh(
     ssh_runner: SSHRunner,
-    primary_ip: str,
     vm_ip: str,
     key_path: str,
     timeout: int = 120,
@@ -30,16 +33,20 @@ def wait_for_vm_ssh(
     """Poll until SSH becomes available on the VM."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
-        result = ssh_runner.run(
-            vm_ip,
-            command="echo ok",
-            timeout=30,
-            attach_output=False,
-            proxy_jump_host=proxy_jump_host,
-            private_key_override=key_path,
-        )
-        if result.succeeded:
-            return
+        try:
+            result = ssh_runner.run(
+                vm_ip,
+                command="echo ok",
+                timeout=30,
+                attach_output=False,
+                proxy_jump_host=proxy_jump_host,
+                private_key_override=key_path,
+            )
+            if result.succeeded:
+                return
+        except SSHError:
+            # Ignore SSH errors, which likely indicate that the VM is not ready yet.
+            continue
         time.sleep(5)
     raise TimeoutError(
         f"SSH to VM at {vm_ip} did not become available within {timeout}s"
@@ -48,7 +55,6 @@ def wait_for_vm_ssh(
 
 def vm_ssh(
     ssh_runner: SSHRunner,
-    primary_ip: str,
     floating_ip: str,
     key_path: str,
     command: str,
@@ -122,10 +128,10 @@ def create_vm(
     with report.step(f"Creating keypair {keypair_name!r}"):
         private_key = openstack_client.keypair_create(keypair_name)
         defer(openstack_client.keypair_delete, keypair_name)
-    key_path = f"/tmp/{keypair_name}.pem"
-    ssh_runner.write_file(primary_ip, key_path, private_key)
-    defer(ssh_runner.run, primary_ip, f"rm -f {key_path}", attach_output=False)
-    ssh_runner.run(primary_ip, f"chmod 600 {key_path}", attach_output=False)
+    key_path = str(Path(tempfile.gettempdir()) / f"{keypair_name}.pem")
+    Path(key_path).write_text(private_key)
+    os.chmod(key_path, stat.S_IRUSR)
+    defer(os.remove, key_path)
 
     server = openstack_client.server_create(
         server_name,
@@ -158,7 +164,6 @@ def create_vm(
             with report.step(f"Waiting for SSH on VM at {floating_ip}"):
                 wait_for_vm_ssh(
                     ssh_runner,
-                    primary_ip,
                     floating_ip,
                     key_path,
                     proxy_jump_host=proxy_jump_host,

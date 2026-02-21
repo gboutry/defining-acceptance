@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Sequence
 
 import paramiko
+import paramiko.ssh_exception
 
 from defining_acceptance.reporting import report
 
@@ -47,6 +48,10 @@ class CommandError(Exception):
             f"stdout: {result.stdout}\n"
             f"stderr: {result.stderr}"
         )
+
+
+class SSHError(Exception):
+    """Raised when an SSH connection or operation fails."""
 
 
 _SAFE_CHARS = re.compile(r"[^a-zA-Z0-9._-]")
@@ -186,11 +191,14 @@ class SSHRunner:
         stdout_chunks: list[str] = []
         stderr_chunks: list[str] = []
 
-        client = self._connect(
-            hostname,
-            proxy_jump_host=proxy_jump_host,
-            private_key_override=private_key_override,
-        )
+        try:
+            client = self._connect(
+                hostname,
+                proxy_jump_host=proxy_jump_host,
+                private_key_override=private_key_override,
+            )
+        except paramiko.ssh_exception.SSHException as e:
+            raise SSHError(f"SSH command failed: {command_str}") from e
         try:
             _, stdout_chan, stderr_chan = client.exec_command(command_str)
             channel = stdout_chan.channel
@@ -225,11 +233,13 @@ class SSHRunner:
                 stdout_chunks.append(data)
                 if stdout_file:
                     stdout_file.write(data)
+                    stdout_file.flush()
             while channel.recv_stderr_ready():
                 data = channel.recv_stderr(4096).decode("utf-8", errors="replace")
                 stderr_chunks.append(data)
                 if stderr_file:
                     stderr_file.write(data)
+                    stderr_file.flush()
 
             returncode = channel.recv_exit_status()
         finally:

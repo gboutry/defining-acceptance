@@ -85,12 +85,10 @@ def ping_external_ip(running_vm, ssh_runner, isolation_result):
 
     floating_ip = running_vm["floating_ip"]
     key_path = running_vm["key_path"]
-    primary_ip = running_vm["primary_ip"]
 
     with report.step(f"Pinging 8.8.8.8 from VM at {floating_ip}"):
         result = vm_ssh(
             ssh_runner,
-            primary_ip,
             floating_ip,
             key_path,
             "ping -c 3 -W 5 8.8.8.8 2>&1; echo exit:$?",
