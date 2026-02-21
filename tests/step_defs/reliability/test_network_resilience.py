@@ -104,7 +104,7 @@ def attempt_blocked_connection(running_vm, ssh_runner, acl_result):
             primary_ip,
             floating_ip,
             key_path,
-            "ping -c 3 -W 5 1.1.1.1 2>&1; echo exit:$?",
+            "ping -c 10 -W 5 1.1.1.1 2>&1; echo exit:$?",
             timeout=30,
             proxy_jump_host=running_vm.get("proxy_jump_host"),
         )
