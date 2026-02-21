@@ -50,6 +50,8 @@ def setup_vm_restricted_access(
     sg_name = f"restricted-{running_vm['server_name']}"
     server_id = running_vm["server_id"]
 
+    # Remove the default security group from the VM to ensure only the restricted group is applied.
+    demo_os_runner.run(f"server remove security group {server_id} default").check()
     sg = demo_os_runner.security_group_create(
         sg_name, description="Blocks ICMP egress for ACL test"
     )
@@ -59,7 +61,7 @@ def setup_vm_restricted_access(
     # Delete the auto-created allow-all egress rules so egress is blocked.
     existing_rules = demo_os_runner.security_group_rule_list(sg_id)
     for rule in existing_rules:
-        if rule.get("Direction") == "egress" or rule.get("direction") == "egress":
+        if rule.get("direction") == "egress":
             with suppress(Exception):
                 demo_os_runner.security_group_rule_delete(
                     rule.get("ID") or rule.get("id")
@@ -78,8 +80,7 @@ def setup_vm_restricted_access(
     defer(
         demo_os_runner.run, f"server remove security group {server_id} {sg_name}"
     )
-    # Remove the default security group from the VM to ensure only the restricted group is applied.
-    demo_os_runner.run(f"server remove security group {server_id} default").check()
+
 
 
 @pytest.fixture
