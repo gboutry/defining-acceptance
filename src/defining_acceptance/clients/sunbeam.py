@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from defining_acceptance.clients.ssh import CommandResult, SSHRunner
 from defining_acceptance.reporting import report
 from defining_acceptance.testbed import MachineConfig
@@ -10,8 +12,32 @@ from defining_acceptance.testbed import MachineConfig
 class SunbeamClient:
     """Execute sunbeam CLI commands on a remote machine via SSH."""
 
+    _REMOTE_MANIFEST_PATH = "/home/ubuntu/manifest.yaml"
+
     def __init__(self, ssh: SSHRunner) -> None:
         self._ssh = ssh
+
+    def _prepare_remote_manifest(
+        self,
+        machine: MachineConfig,
+        manifest_path: str | None,
+    ) -> str | None:
+        """Upload a local manifest file and return its remote path."""
+        if manifest_path is None:
+            return None
+
+        local_manifest_path = Path(manifest_path).expanduser().resolve(strict=False)
+        if not local_manifest_path.is_file():
+            raise FileNotFoundError(f"Manifest file not found: {local_manifest_path}")
+
+        with report.step(f"Upload manifest to {machine.hostname}"):
+            self._ssh.upload_file(
+                machine.ip,
+                local_manifest_path,
+                self._REMOTE_MANIFEST_PATH,
+            )
+
+        return self._REMOTE_MANIFEST_PATH
 
     def install_snap(
         self,
@@ -64,9 +90,10 @@ class SunbeamClient:
         timeout: int = 3600,
     ) -> CommandResult:
         """Bootstrap the sunbeam cluster on the primary machine."""
+        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
         command = f"sunbeam cluster bootstrap --accept-defaults --role {role}"
-        if manifest_path is not None:
-            command = f"{command} --manifest {manifest_path}"
+        if remote_manifest_path is not None:
+            command = f"{command} --manifest {remote_manifest_path}"
         with report.step(f"Bootstrap sunbeam cluster with role {role!r}"):
             result = self._ssh.run(
                 machine.ip,
@@ -203,9 +230,10 @@ class SunbeamClient:
         timeout: int = 7200,
     ) -> CommandResult:
         """Deploy OpenStack on the bootstrapped Juju controller."""
+        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
         cmd = "sunbeam cluster deploy"
-        if manifest_path:
-            cmd += f" --manifest {manifest_path}"
+        if remote_manifest_path:
+            cmd += f" --manifest {remote_manifest_path}"
         with report.step("Deploy OpenStack cloud"):
             return self._ssh.run(
                 machine.ip,
@@ -249,13 +277,14 @@ class SunbeamClient:
         timeout: int = 3600,
     ) -> CommandResult:
         """Bootstrap Sunbeam using an external Juju controller."""
+        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
         cmd = (
             f"sunbeam cluster bootstrap --accept-defaults"
             f" --role {role}"
             f" --controller {controller_name}"
         )
-        if manifest_path:
-            cmd += f" --manifest {manifest_path}"
+        if remote_manifest_path:
+            cmd += f" --manifest {remote_manifest_path}"
         with report.step(f"Bootstrap with external controller {controller_name!r}"):
             return self._ssh.run(
                 machine.ip,
