@@ -104,6 +104,7 @@ class SSHRunner:
         hostname: str,
         proxy_jump_host: str | None = None,
         private_key_override: str | None = None,
+        use_private_key: bool = True,
     ) -> paramiko.SSHClient:
         client = paramiko.SSHClient()
         client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
@@ -118,10 +119,14 @@ class SSHRunner:
             )
             sock = paramiko.ProxyCommand(cmd)
 
+        key_filename: str | None = None
+        if use_private_key:
+            key_filename = private_key_override or self._private_key_path
+
         client.connect(
             hostname=hostname,
             username=self._user,
-            key_filename=private_key_override or self._private_key_path,
+            key_filename=key_filename,
             timeout=30,
             banner_timeout=30,
             auth_timeout=30,
@@ -142,6 +147,7 @@ class SSHRunner:
         attach_output: bool = True,
         proxy_jump_host: str | None = None,
         private_key_override: str | None = None,
+        use_private_key: bool = True,
     ) -> CommandResult:
         """Run a command on a remote host.
 
@@ -196,6 +202,7 @@ class SSHRunner:
                 hostname,
                 proxy_jump_host=proxy_jump_host,
                 private_key_override=private_key_override,
+                use_private_key=use_private_key,
             )
         except paramiko.ssh_exception.SSHException as e:
             raise SSHError(f"SSH command failed: {command_str}") from e

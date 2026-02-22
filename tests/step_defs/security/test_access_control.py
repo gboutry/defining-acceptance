@@ -5,6 +5,7 @@ import os
 import pytest
 from pytest_bdd import scenario, then, when
 
+from defining_acceptance.clients.ssh import SSHError
 from defining_acceptance.reporting import report
 from tests._vm_helpers import vm_ssh
 
@@ -81,18 +82,21 @@ def connect_without_key(running_vm, ssh_runner, no_key_result):
     floating_ip = running_vm["floating_ip"]
 
     with report.step(f"SSH to {floating_ip} without key (expect failure)"):
-        # We pass a non-existent key to Ensure no key is offered; the connection must fail.
-        # Paramiko handles PasswordAuthentication=no implicitly unless we give it a password.
-        result = ssh_runner.run(
-            floating_ip,
-            command="echo ok",
-            timeout=10,
-            attach_output=False,
-            proxy_jump_host=running_vm.get("proxy_jump_host"),
-            private_key_override="/dev/null",
-        )
-    no_key_result["success"] = result.succeeded
-    no_key_result["returncode"] = result.returncode
+        # Do not offer any private key; the VM should refuse auth.
+        try:
+            result = ssh_runner.run(
+                floating_ip,
+                command="echo ok",
+                timeout=10,
+                attach_output=False,
+                proxy_jump_host=running_vm.get("proxy_jump_host"),
+                use_private_key=False,
+            )
+            no_key_result["success"] = result.succeeded
+            no_key_result["returncode"] = result.returncode
+        except SSHError:
+            no_key_result["success"] = False
+            no_key_result["returncode"] = 255
 
 
 @then("the connection should be refused")
