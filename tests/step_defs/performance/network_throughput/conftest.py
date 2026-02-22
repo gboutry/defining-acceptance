@@ -55,8 +55,8 @@ def setup_running_vm(
             ssh_runner,
             resources["floating_ip"],
             resources["key_path"],
-            "sudo apt update && sudo apt-get install -y iperf3 -qq 2>/dev/null || true",
-            timeout=120,
+            "sudo apt update && sudo apt-get install -y iperf3 -qq 2>/dev/null",
+            timeout=300,
             proxy_jump_host=resources.get("proxy_jump_host"),
         )
 
