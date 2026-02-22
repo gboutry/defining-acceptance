@@ -60,16 +60,48 @@ def vm_ssh(
     command: str,
     timeout: int = 60,
     proxy_jump_host: str | None = None,
+    attach_output: bool = False,
 ) -> CommandResult:
     """Execute *command* inside a VM."""
     return ssh_runner.run(
         floating_ip,
         command,
         timeout=timeout,
-        attach_output=False,
+        attach_output=attach_output,
         proxy_jump_host=proxy_jump_host,
         private_key_override=key_path,
     )
+
+
+def ensure_iperf3_installed(
+    ssh_runner: SSHRunner,
+    resources: dict,
+    *,
+    update_timeout: int = 300,
+    install_timeout: int = 300,
+) -> None:
+    """Ensure iperf3 is installed on a VM with visible apt output."""
+    with report.step("Updating apt package index"):
+        vm_ssh(
+            ssh_runner,
+            resources["floating_ip"],
+            resources["key_path"],
+            "sudo apt-get update",
+            timeout=update_timeout,
+            proxy_jump_host=resources.get("proxy_jump_host"),
+            attach_output=True,
+        ).check()
+
+    with report.step("Installing iperf3"):
+        vm_ssh(
+            ssh_runner,
+            resources["floating_ip"],
+            resources["key_path"],
+            "sudo apt-get install -y iperf3",
+            timeout=install_timeout,
+            proxy_jump_host=resources.get("proxy_jump_host"),
+            attach_output=True,
+        ).check()
 
 
 def create_vm(

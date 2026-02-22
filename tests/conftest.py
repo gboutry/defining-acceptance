@@ -437,9 +437,7 @@ def is_provisioned(bootstrapped: None, admin_os_runner: OpenStackClient) -> bool
     with report.step("Verifying cloud is provisioned"):
         endpoints = admin_os_runner.endpoint_list()
         assert endpoints, "No service endpoints found — cloud may not be configured"
-        report.attach_text(
-            "\n".join(e.url for e in endpoints), "Service endpoints"
-        )
+        report.attach_text("\n".join(e.url for e in endpoints), "Service endpoints")
     return True
 
 

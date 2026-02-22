@@ -188,11 +188,15 @@ class OpenStackClient:
             None,
         )
         if port is None:
-            raise ValueError(f"No Neutron port with fixed IP found for server {server!r}")
+            raise ValueError(
+                f"No Neutron port with fixed IP found for server {server!r}"
+            )
 
         fixed_ip = port.fixed_ips[0].get("ip_address") if port.fixed_ips else None
         if fixed_ip is None:
-            raise ValueError(f"No fixed IP found on port {port.id!r} for server {server!r}")
+            raise ValueError(
+                f"No fixed IP found on port {port.id!r} for server {server!r}"
+            )
 
         fip = next(
             (

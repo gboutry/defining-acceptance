@@ -10,7 +10,7 @@ from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.reporting import report
 from defining_acceptance.testbed import TestbedConfig
 from defining_acceptance.utils import DeferStack
-from tests._vm_helpers import create_vm, vm_ssh
+from tests._vm_helpers import create_vm, ensure_iperf3_installed, vm_ssh
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
 
@@ -51,14 +51,7 @@ def setup_running_vm(
 
     # Install iperf3 on the server VM.
     with report.step("Installing iperf3 on server VM"):
-        vm_ssh(
-            ssh_runner,
-            resources["floating_ip"],
-            resources["key_path"],
-            "sudo apt update && sudo apt-get install -y iperf3 -qq 2>/dev/null",
-            timeout=300,
-            proxy_jump_host=resources.get("proxy_jump_host"),
-        )
+        ensure_iperf3_installed(ssh_runner, resources)
 
     # Start iperf3 in server mode (background, exits on first client).
     vm_ssh(

@@ -11,7 +11,7 @@ from defining_acceptance.clients.ssh import SSHRunner
 from defining_acceptance.reporting import report
 from defining_acceptance.testbed import TestbedConfig
 from defining_acceptance.utils import DeferStack
-from tests._vm_helpers import create_vm, vm_ssh
+from tests._vm_helpers import create_vm, ensure_iperf3_installed, vm_ssh
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
 
@@ -90,14 +90,7 @@ def setup_vms_different_host(
     client_vm.update(resources)
 
     with report.step("Installing iperf3 on client VM"):
-        vm_ssh(
-            ssh_runner,
-            resources["floating_ip"],
-            resources["key_path"],
-            "sudo apt-get install -y iperf3 -qq 2>/dev/null || true",
-            timeout=300,
-            proxy_jump_host=resources.get("proxy_jump_host"),
-        )
+        ensure_iperf3_installed(ssh_runner, resources)
     report.note(
         f"Client VM {resources['server_name']} placed on a different host "
         f"(anti-affinity)"
