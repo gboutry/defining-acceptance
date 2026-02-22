@@ -25,6 +25,9 @@ build-backend = "setuptools.build_meta"
 
 [tool.pytest.ini_options]
 bdd_features_base_dir = "features/"
+log_cli_level = "INFO"
+log_format = "%(asctime)s %(levelname)s %(message)s"
+log_date_format = "%Y-%m-%d %H:%M:%S"
 addopts = [
     "-v",
     "--tb=short",
