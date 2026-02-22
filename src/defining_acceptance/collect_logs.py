@@ -38,9 +38,18 @@ def _collect_sos_for_machine(
     host_dir = artifacts_dir / "sos" / host_label
     host_dir.mkdir(parents=True, exist_ok=True)
 
+    update_index = ssh.run(
+        machine.ip,
+        "sudo DEBIAN_FRONTEND=noninteractive apt-get update -y",
+        timeout=300,
+        attach_output=False,
+    )
+    _write_result(host_dir, "apt-update", update_index.stdout, update_index.stderr)
+    if update_index.returncode != 0:
+        return (machine.hostname, False, "failed to update apt index")
+
     install = ssh.run(
         machine.ip,
-        "sudo DEBIAN_FRONTEND=noninteractive apt-get update -y && "
         "sudo DEBIAN_FRONTEND=noninteractive apt-get install -y sosreport",
         timeout=1200,
         attach_output=False,
@@ -51,7 +60,7 @@ def _collect_sos_for_machine(
 
     sos = ssh.run(
         machine.ip,
-        f"sudo sos report --batch --all-logs --clean --name {_sanitize(machine.hostname)}",
+        f"sudo sos report --batch --all-logs --name {_sanitize(machine.hostname)}",
         timeout=3600,
         attach_output=False,
     )
@@ -61,22 +70,25 @@ def _collect_sos_for_machine(
 
     archive = ssh.run(
         machine.ip,
-        "sudo ls -1t /var/tmp/sosreport-*.tar* 2>/dev/null | head -n1",
+        "sudo ls -1t /tmp/sosreport-*.tar* 2>/dev/null",
         timeout=60,
         attach_output=False,
     )
     _write_result(host_dir, "sos-archive-path", archive.stdout, archive.stderr)
-    remote_archive = archive.stdout.strip()
-    if archive.returncode != 0 or not remote_archive:
+    remote_archives = archive.stdout.strip()
+    if archive.returncode != 0 or not remote_archives:
         return (machine.hostname, False, "could not locate sos archive")
 
-    local_archive = host_dir / Path(remote_archive).name
-    ssh.download_file(
-        machine.ip,
-        remote_archive,
-        local_archive,
-    )
-    return (machine.hostname, True, str(local_archive))
+    archive_files = []
+    for line in remote_archives.splitlines():
+        local_archive = host_dir / Path(line).name
+        archive_files.append(local_archive)
+        ssh.download_file(
+            machine.ip,
+            line,
+            local_archive,
+        )
+    return (machine.hostname, True, ", ".join(str(f) for f in archive_files))
 
 
 def _list_models(ssh: SSHRunner, machine: MachineConfig) -> list[str]:
@@ -277,19 +289,18 @@ def main() -> None:
                 logger.error("sos: %s -> %s", hostname, info)
                 failures.append(f"sos:{hostname}:{info}")
 
-    primaries = _primary_machines(testbed)
-    logger.info("Collecting Juju diagnostics on %d primary machine(s)", len(primaries))
-    for machine in primaries:
-        hostname, ok, info = _collect_juju_for_primary(
-            ssh,
-            machine,
-            artifacts_dir,
-        )
-        if ok:
-            logger.info("juju: %s -> %s", hostname, info)
-        else:
-            logger.error("juju: %s -> %s", hostname, info)
-            failures.append(f"juju:{hostname}:{info}")
+    primary = testbed.machines[0]
+    logger.info("Collecting Juju diagnostics on primary")
+    hostname, ok, info = _collect_juju_for_primary(
+        ssh,
+        primary,
+        artifacts_dir,
+    )
+    if ok:
+        logger.info("juju: %s -> %s", hostname, info)
+    else:
+        logger.error("juju: %s -> %s", hostname, info)
+        failures.append(f"juju:{hostname}:{info}")
 
     if failures:
         logger.warning("Collection completed with failures (%d)", len(failures))
