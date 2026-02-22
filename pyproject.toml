@@ -38,7 +38,6 @@ addopts = [
     "--ignore=src/",
 ]
 markers = [
-    "bdd: marks tests as (BDD) tests, automatically added to all tests in the bdd/ directory",
     # Test suite markers
     "security: marks tests as part of the security suite",
     "reliability: marks tests as part of the reliability suite",

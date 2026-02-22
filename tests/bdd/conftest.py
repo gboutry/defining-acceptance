@@ -102,7 +102,6 @@ def pytest_collection_modifyitems(
     }
 
     for item in items:
-        item.add_marker(pytest.mark.bdd)
         for marker_name, should_skip in skip_rules.items():
             if item.get_closest_marker(marker_name) and should_skip(testbed):
                 item.add_marker(

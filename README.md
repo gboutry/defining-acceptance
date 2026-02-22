@@ -45,20 +45,20 @@ Place your SSH private key at `./ssh_private_key` (or set `ssh.private_key` in
 `testbed.yaml`), then point the suite at your environment:
 
 ```bash
-pytest -m "bdd" --testbed-file testbed.yaml
+pytest tests/bdd --testbed-file testbed.yaml
 ```
 
 ### Select a subset
 
 ```bash
 # Functional suite only (provisioning + day-2 ops)
-pytest -m "bdd and functional"
+pytest tests/bdd -m "functional"
 
 # Everything except deployment steps (assumes cloud is already up)
-pytest -m "bdd and not provisioning"
+pytest tests/bdd -m "not provisioning"
 
 # Reliability and security on a running cloud
-pytest -m "bdd and (reliability or security)"
+pytest tests/bdd -m "reliability or security"
 ```
 
 The framework reads `testbed.yaml` at collection time and **automatically skips** any
@@ -70,7 +70,7 @@ safe to run in full.
 Run the entire suite without real infrastructure to validate wiring and imports:
 
 ```bash
-MOCK_MODE=1 pytest tests/
+MOCK_MODE=1 pytest tests/bdd
 ```
 
 ## Reporting
