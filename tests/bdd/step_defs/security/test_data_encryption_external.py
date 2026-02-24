@@ -5,7 +5,9 @@ import os
 import pytest
 from pytest_bdd import scenario, then, when
 
+from defining_acceptance.clients import OpenStackClient, SSHRunner
 from defining_acceptance.reporting import report
+from defining_acceptance.testbed import TestbedConfig
 
 MOCK_MODE = os.environ.get("MOCK_MODE", "0") == "1"
 
@@ -27,7 +29,12 @@ def tls_result() -> dict:
 
 @pytest.fixture
 @when("I connect to an external service")
-def connect_to_service(admin_os_runner, testbed, ssh_runner, tls_result):
+def connect_to_service(
+    admin_os_runner: OpenStackClient,
+    testbed: TestbedConfig,
+    ssh_runner: SSHRunner,
+    tls_result: dict,
+):
     """Verify that the public Keystone endpoint uses HTTPS with a valid certificate.
 
     Retrieves the public Identity endpoint URL from the service catalogue and
@@ -41,16 +48,11 @@ def connect_to_service(admin_os_runner, testbed, ssh_runner, tls_result):
     primary_ip = testbed.primary_machine.ip
 
     with report.step("Retrieving public Keystone endpoint"):
-        endpoints = admin_os_runner.endpoint_list()
-        identity_endpoints = [
-            e
-            for e in endpoints
-            if e.get("Service Type") == "identity" and e.get("Interface") == "public"
-        ]
-        assert identity_endpoints, (
+        identity_endpoint = admin_os_runner.get_endpoint("identity", "public")
+        assert identity_endpoint is not None, (
             "No public identity endpoint found in the service catalogue"
         )
-        url = identity_endpoints[0]["URL"].rstrip("/")
+        url = identity_endpoint.url.rstrip("/")
 
     assert url.startswith("https://"), (
         f"Public Keystone endpoint does not use HTTPS: {url!r}"
