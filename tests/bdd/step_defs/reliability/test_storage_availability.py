@@ -1,6 +1,7 @@
 """Step definitions for storage availability reliability tests."""
 
 import os
+import time
 import uuid
 
 import pytest
@@ -141,7 +142,13 @@ def verify_volume_accessible(spawn_vm_result, demo_os_runner: OpenStackClient):
         return
     volume_id = spawn_vm_result["volume_id"]
     with report.step(f"Checking volume {volume_id} status"):
-        status = demo_os_runner.volume_status(volume_id)
+        deadline = time.monotonic() + 180
+        status = None
+        while time.monotonic() < deadline:
+            status = demo_os_runner.volume_status(volume_id)
+            if status == "in-use":
+                break
+            time.sleep(5)
     assert status == "in-use", f"Expected volume status 'in-use', got {status!r}"
     report.note(f"Volume {volume_id} is in-use")
 
