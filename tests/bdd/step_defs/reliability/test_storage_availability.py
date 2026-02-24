@@ -64,7 +64,7 @@ def _create_vm_with_volume(
     flavors = openstack_client.flavor_list()
     assert flavors, "No flavors available"
     try:
-        flavor = next(f for f in flavors if f.ram >= 1024).name
+        flavor = next(f for f in flavors if f.ram >= 1024 and "sev" not in f.name).id
     except StopIteration:
         assert False, "No suitable flavor with >=1GB RAM found"
 

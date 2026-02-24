@@ -43,6 +43,25 @@ class OpenStackClient:
     def endpoint_list(self) -> list[Endpoint]:
         return list(self._identity.endpoints())
 
+    def get_endpoint(
+        self, service_type: str, interface: str = "public"
+    ) -> Endpoint | None:
+        """Get an endpoint from the service catalogue matching *service_type* and *interface*."""
+        services_by_id = {
+            service.id: service
+            for service in self._identity.services()
+            if getattr(service, "id", None) is not None
+        }
+
+        for endpoint in self._identity.endpoints():
+            if endpoint.interface != interface:
+                continue
+            service = services_by_id.get(endpoint.service_id)
+            if service is not None and getattr(service, "type", None) == service_type:
+                return endpoint
+
+        return None
+
     # ── Compute (server) ──────────────────────────────────────────────────────
 
     def server_create(
