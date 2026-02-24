@@ -238,29 +238,48 @@ def primary_machine(testbed: TestbedConfig) -> MachineConfig:
 
 
 @pytest.fixture(scope="session")
-def openstack_clouds_yaml(testbed: TestbedConfig) -> str | None:
-    """Path to the clouds.yaml file, from testbed config.
+def openstack_clouds_yaml(
+    testbed: TestbedConfig,
+    bootstrapped: None,
+    ssh_runner: SSHRunner,
+    primary_machine: MachineConfig,
+    session_tmp_dir: Path,
+) -> str:
+    """Path to a local clouds.yaml file for the OpenStack SDK.
 
-    Returns None if not configured — the ``is_provisioned`` fixture will
-    fail early in that case.
+    Resolution order:
+    1. ``deployment.clouds_yaml`` from testbed.yaml — used as-is when set.
+    2. When ``deployment.provisioned`` is false, the file is downloaded from
+       the primary machine at ``~/.config/openstack/clouds.yaml`` after
+       bootstrapping (``sunbeam cloud-config`` creates it there).
+    3. When ``deployment.provisioned`` is true and ``clouds_yaml`` is not set,
+       a :class:`ValueError` is raised — the path must be provided explicitly.
     """
     if MOCK_MODE:
-        return None
+        return "mock_clouds.yaml"
     if testbed.deployment and testbed.deployment.clouds_yaml:
         return testbed.deployment.clouds_yaml
-    return None
+    if testbed.deployment and testbed.deployment.provisioned:
+        raise ValueError(
+            "deployment.clouds_yaml must be set in testbed.yaml "
+            "when deployment.provisioned is true"
+        )
+    # provisioned=false: clouds.yaml was written to the primary machine by
+    # 'sunbeam cloud-config' during bootstrapping — download it locally.
+    user = (testbed.ssh.user if testbed.ssh else None) or "ubuntu"
+    remote_path = f"/home/{user}/.config/openstack/clouds.yaml"
+    local_path = session_tmp_dir / "clouds.yaml"
+    ssh_runner.download_file(primary_machine.ip, remote_path, local_path)
+    return str(local_path)
 
 
 @pytest.fixture(scope="session")
 def demo_os_runner(
-    openstack_clouds_yaml: str | None,
+    openstack_clouds_yaml: str,
 ) -> OpenStackClient:
     """OpenStackClient for the demo (regular) cloud user (OS_CLOUD=sunbeam)."""
     if MOCK_MODE:
         return MagicMock(spec=OpenStackClient)
-    assert openstack_clouds_yaml is not None, (
-        "deployment.clouds_yaml must be set in testbed.yaml to use OpenStack SDK"
-    )
     from defining_acceptance.clients.credentials import make_connection
 
     conn = make_connection(openstack_clouds_yaml, "sunbeam")
@@ -269,14 +288,11 @@ def demo_os_runner(
 
 @pytest.fixture(scope="session")
 def admin_os_runner(
-    openstack_clouds_yaml: str | None,
+    openstack_clouds_yaml: str,
 ) -> OpenStackClient:
     """OpenStackClient for the admin (superuser) cloud user (OS_CLOUD=sunbeam-admin)."""
     if MOCK_MODE:
         return MagicMock(spec=OpenStackClient)
-    assert openstack_clouds_yaml is not None, (
-        "deployment.clouds_yaml must be set in testbed.yaml to use OpenStack SDK"
-    )
     from defining_acceptance.clients.credentials import make_connection
 
     conn = make_connection(openstack_clouds_yaml, "sunbeam-admin")
