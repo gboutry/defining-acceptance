@@ -238,11 +238,17 @@ def primary_machine(testbed: TestbedConfig) -> MachineConfig:
 
 
 @pytest.fixture(scope="session")
+def sunbeam_machine(testbed: TestbedConfig) -> MachineConfig:
+    """Machine from which Sunbeam CLI commands are executed."""
+    return testbed.sunbeam_machine
+
+
+@pytest.fixture(scope="session")
 def openstack_clouds_yaml(
     testbed: TestbedConfig,
     bootstrapped: None,
     ssh_runner: SSHRunner,
-    primary_machine: MachineConfig,
+    sunbeam_machine: MachineConfig,
     session_tmp_dir: Path,
 ) -> str:
     """Path to a local clouds.yaml file for the OpenStack SDK.
@@ -250,7 +256,7 @@ def openstack_clouds_yaml(
     Resolution order:
     1. ``deployment.clouds_yaml`` from testbed.yaml — used as-is when set.
     2. When ``deployment.provisioned`` is false, the file is downloaded from
-       the primary machine at ``~/.config/openstack/clouds.yaml`` after
+       the Sunbeam command machine at ``~/.config/openstack/clouds.yaml`` after
        bootstrapping (``sunbeam cloud-config`` creates it there).
     3. When ``deployment.provisioned`` is true and ``clouds_yaml`` is not set,
        a :class:`ValueError` is raised — the path must be provided explicitly.
@@ -264,12 +270,12 @@ def openstack_clouds_yaml(
             "deployment.clouds_yaml must be set in testbed.yaml "
             "when deployment.provisioned is true"
         )
-    # provisioned=false: clouds.yaml was written to the primary machine by
+    # provisioned=false: clouds.yaml was written to the Sunbeam command machine by
     # 'sunbeam cloud-config' during bootstrapping — download it locally.
     user = (testbed.ssh.user if testbed.ssh else None) or "ubuntu"
     remote_path = f"/home/{user}/.config/openstack/clouds.yaml"
     local_path = session_tmp_dir / "clouds.yaml"
-    ssh_runner.download_file(primary_machine.ip, remote_path, local_path)
+    ssh_runner.download_file(sunbeam_machine.ip, remote_path, local_path)
     return str(local_path)
 
 
@@ -394,7 +400,7 @@ def _bootstrap_manual(
 def _bootstrap_maas(
     testbed: TestbedConfig,
     sunbeam_client: SunbeamClient,
-    primary: MachineConfig,
+    sunbeam_machine: MachineConfig,
     channel: str | None,
     revision: int | None,
     manifest: str | None,
@@ -404,10 +410,10 @@ def _bootstrap_maas(
         raise ValueError(
             "MAAS deployment selected but no maas section found in testbed.yaml"
         )
-    sunbeam_client.install_snap(primary, channel=channel, revision=revision)
-    sunbeam_client.prepare_node(primary, client=True)
+    sunbeam_client.install_snap(sunbeam_machine, channel=channel, revision=revision)
+    sunbeam_client.prepare_node(sunbeam_machine, client=True)
     sunbeam_client.add_maas_provider(
-        primary,
+        sunbeam_machine,
         endpoint=maas.endpoint,
         api_key=maas.api_key,
         deployment_name=maas.name or "maas",
@@ -420,9 +426,9 @@ def _bootstrap_maas(
         ]:
             if space:
                 sunbeam_client.map_maas_network_space(
-                    primary, space=space, network=network
+                    sunbeam_machine, space=space, network=network
                 )
-    sunbeam_client.validate_deployment(primary)
+    sunbeam_client.validate_deployment(sunbeam_machine)
     if testbed.has_external_juju:
         controller = testbed.juju.controller if testbed.juju else None
         if controller is None or not controller.token:
@@ -431,21 +437,23 @@ def _bootstrap_maas(
                 "juju.external is true"
             )
         sunbeam_client.register_juju_controller(
-            primary,
+            sunbeam_machine,
             name=controller.name,
             token=controller.token,
         )
         sunbeam_client.bootstrap_juju_controller(
-            primary,
+            sunbeam_machine,
             controller_name=controller.name,
             manifest_path=manifest,
         )
     else:
-        sunbeam_client.bootstrap_juju_controller(primary, manifest_path=manifest)
-    _configure_proxy_if_enabled(testbed, sunbeam_client, primary)
-    sunbeam_client.deploy_cloud(primary, manifest_path=manifest)
-    sunbeam_client.configure(primary)
-    sunbeam_client.cloud_config(primary)
+        sunbeam_client.bootstrap_juju_controller(
+            sunbeam_machine, manifest_path=manifest
+        )
+    _configure_proxy_if_enabled(testbed, sunbeam_client, sunbeam_machine)
+    sunbeam_client.deploy_cloud(sunbeam_machine, manifest_path=manifest)
+    sunbeam_client.configure(sunbeam_machine)
+    sunbeam_client.cloud_config(sunbeam_machine)
 
 
 @pytest.fixture(scope="session")
@@ -465,13 +473,18 @@ def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
     revision = testbed.deployment.revision if testbed.deployment else None
     manifest = testbed.deployment.manifest if testbed.deployment else None
     primary = testbed.primary_machine
+    sunbeam_machine = testbed.sunbeam_machine
 
     with report.step(f"Bootstrapping cloud on {primary.hostname} ({primary.ip})"):
+        if testbed.is_maas and sunbeam_machine.ip != primary.ip:
+            report.note(
+                f"MAAS mode: running Sunbeam commands from {sunbeam_machine.ip!r}"
+            )
         if testbed.is_maas:
             _bootstrap_maas(
                 testbed=testbed,
                 sunbeam_client=sunbeam_client,
-                primary=primary,
+                sunbeam_machine=sunbeam_machine,
                 channel=channel,
                 revision=revision,
                 manifest=manifest,
@@ -498,7 +511,7 @@ _FEATURE_DEPS: dict[str, list[str]] = {
 
 @pytest.fixture(scope="session")
 def enable_feature(
-    bootstrapped: None, sunbeam_client: SunbeamClient, primary_machine: MachineConfig
+    bootstrapped: None, sunbeam_client: SunbeamClient, sunbeam_machine: MachineConfig
 ) -> typing.Callable[[str], None]:
     """Return a callable that enables a named Sunbeam feature (with its deps)."""
 
@@ -513,7 +526,7 @@ def enable_feature(
             return
         for dep in _FEATURE_DEPS.get(name, []):
             _enable(dep)
-        sunbeam_client.enable(primary_machine, name)
+        sunbeam_client.enable(sunbeam_machine, name)
         enabled.add(name)
 
     return _enable
@@ -530,7 +543,9 @@ _TEMPEST_PATTERNS: dict[str, str] = {
 
 @pytest.fixture(scope="session")
 def tempest_runner(
-    bootstrapped: None, ssh_runner: SSHRunner, testbed: TestbedConfig
+    bootstrapped: None,
+    ssh_runner: SSHRunner,
+    sunbeam_machine: MachineConfig,
 ) -> typing.Callable[[str | None], CommandResult]:
     """Return a callable that runs Tempest tests for a given feature."""
 
@@ -546,7 +561,7 @@ def tempest_runner(
         pattern = _TEMPEST_PATTERNS.get(feature, feature) if feature else ".*"
         with report.step(f"Running Tempest tests (pattern={pattern!r})"):
             return ssh_runner.run(
-                testbed.primary_machine.ip,
+                sunbeam_machine.ip,
                 ["tempest", "run", "--regex", pattern],
                 timeout=1800,
             ).check()

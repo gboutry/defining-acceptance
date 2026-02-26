@@ -29,7 +29,7 @@ Key sections:
 | `deployment` | Provider (`manual`/`maas`), topology, snap channel. Set `provisioned: true` to skip deployment tests on an already-running cloud. |
 | `machines` | One entry per node — IP, roles (`control`/`compute`/`storage`), OSD devices, network interfaces. |
 | `features` | Sunbeam features to enable after bootstrap (`secrets`, `loadbalancer`, `caas`). |
-| `ssh` | User and private key path used by the harness. |
+| `ssh` | User and private key path used by the harness. `proxy_jump` is used for VM SSH; in MAAS mode it is also the Sunbeam CLI execution host. |
 | `juju` | Set `external: true` to reuse an existing Juju controller (`controller.name` + registration `controller.token`). |
 | `maas` | MAAS deployment name, API endpoint, and credentials (only for `provider: maas`). |
 
@@ -64,6 +64,11 @@ pytest tests/bdd -m "reliability or security"
 The framework reads `testbed.yaml` at collection time and **automatically skips** any
 test whose requirements the environment does not satisfy — so `pytest -m bdd` is always
 safe to run in full.
+
+### `ssh.proxy_jump` behavior by deployment mode
+
+- **Manual mode (`deployment.provider: manual`)**: `proxy_jump` is used as a bastion for VM connectivity tests.
+- **MAAS mode (`deployment.provider: maas`)**: `proxy_jump` remains the VM bastion and is also the host where Sunbeam client commands are executed (`prepare-node-script --client`, bootstrap/deploy/configure flows).
 
 ### Mock mode
 

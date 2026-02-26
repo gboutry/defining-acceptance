@@ -93,4 +93,6 @@ ssh:
   user: ubuntu
   private_key: ./ssh_private_key       # Path to the private key file (relative or absolute)
   public_key: ./ssh_public_key.pub     # Path to the matching public key file
-  proxy_jump: 127.0.0.1                # Optional: if set, all connections to OpenStack VMs will be proxied. This must be reachable from the test runner, have connectivity to the external network. The current host must have ssh credentials configured on the proxy_jump host.
+  proxy_jump: 127.0.0.1                # Optional in manual mode, required in MAAS mode.
+                                      # Manual mode: bastion host for OpenStack VM SSH connectivity checks.
+                                      # MAAS mode: bastion host + Sunbeam client execution host (sunbeam commands run here).

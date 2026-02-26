@@ -393,3 +393,49 @@ class TestTestbedConfigProperties:
             }
         )
         assert cfg.is_provisioned is True
+
+    def test_sunbeam_machine_manual_uses_primary(self) -> None:
+        """sunbeam_machine resolves to primary machine in manual mode."""
+        cfg = TestbedConfig.from_dict(
+            {
+                "machines": [CONTROL_MACHINE, WORKER_MACHINE],
+                "deployment": {
+                    "provider": "manual",
+                    "topology": "multi-node",
+                    "channel": "2024.1/stable",
+                },
+                "ssh": {"user": "ubuntu"},
+            }
+        )
+        assert cfg.sunbeam_machine.ip == cfg.primary_machine.ip
+
+    def test_sunbeam_machine_maas_uses_proxy_jump(self) -> None:
+        """sunbeam_machine resolves to ssh.proxy_jump in MAAS mode."""
+        cfg = TestbedConfig.from_dict(
+            {
+                "machines": [CONTROL_MACHINE],
+                "deployment": {
+                    "provider": "maas",
+                    "topology": "multi-node",
+                    "channel": "2024.1/stable",
+                },
+                "ssh": {"user": "ubuntu", "proxy_jump": "10.0.0.50"},
+            }
+        )
+        assert cfg.sunbeam_machine.ip == "10.0.0.50"
+
+    def test_sunbeam_machine_maas_without_proxy_jump_raises(self) -> None:
+        """MAAS mode requires ssh.proxy_jump for sunbeam_machine resolution."""
+        cfg = TestbedConfig.from_dict(
+            {
+                "machines": [CONTROL_MACHINE],
+                "deployment": {
+                    "provider": "maas",
+                    "topology": "multi-node",
+                    "channel": "2024.1/stable",
+                },
+                "ssh": {"user": "ubuntu"},
+            }
+        )
+        with pytest.raises(ValueError, match="ssh.proxy_jump"):
+            _ = cfg.sunbeam_machine

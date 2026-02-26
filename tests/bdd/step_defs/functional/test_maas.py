@@ -62,10 +62,10 @@ def verify_maas_machines_ready(
     """
     if MOCK_MODE:
         return
-    primary_ip = testbed.primary_machine.ip
+    command_machine = testbed.sunbeam_machine
     with report.step("Checking MAAS machine status"):
         result = ssh_runner.run(
-            primary_ip,
+            command_machine.ip,
             (
                 "maas admin machines read 2>/dev/null"
                 ' | python3 -c "'
@@ -115,8 +115,9 @@ def add_maas_provider(
         return
     maas = testbed.maas
     assert maas is not None, "No MAAS configuration in testbed.yaml"
+    command_machine = testbed.sunbeam_machine
     result: CommandResult = sunbeam_client.add_maas_provider(
-        testbed.primary_machine,
+        command_machine,
         endpoint=maas.endpoint,
         api_key=maas.api_key,
         deployment_name=maas.name or "maas",
@@ -136,10 +137,10 @@ def verify_maas_registered(
         return
     assert maas_provider_result["success"], "add_maas_provider returned non-zero exit"
 
-    primary_ip = testbed.primary_machine.ip
+    command_machine = testbed.sunbeam_machine
     with report.step("Verifying MAAS provider is listed"):
         result = ssh_runner.run(
-            primary_ip,
+            command_machine.ip,
             "sunbeam deployment list 2>/dev/null || echo ''",
             attach_output=False,
         )
@@ -161,8 +162,9 @@ def maas_provider_configured(
         return
     maas = testbed.maas
     assert maas is not None, "No MAAS configuration in testbed.yaml"
+    command_machine = testbed.sunbeam_machine
     result = sunbeam_client.add_maas_provider(
-        testbed.primary_machine,
+        command_machine,
         endpoint=maas.endpoint,
         api_key=maas.api_key,
         deployment_name=maas.name or "maas",
@@ -206,7 +208,7 @@ def map_network_spaces(
         if space:
             with report.step(f"Mapping space {space!r} → network {network!r}"):
                 sunbeam_client.map_maas_network_space(
-                    testbed.primary_machine, space=space, network=network
+                    testbed.sunbeam_machine, space=space, network=network
                 )
 
     spaces_result["success"] = True
@@ -221,10 +223,10 @@ def verify_network_mappings(
         return
     assert spaces_result["success"], "Network space mapping failed"
 
-    primary_ip = testbed.primary_machine.ip
+    command_machine = testbed.sunbeam_machine
     with report.step("Verifying network space mappings"):
         result = ssh_runner.run(
-            primary_ip,
+            command_machine.ip,
             "sunbeam deployment space list 2>/dev/null || echo ''",
             attach_output=False,
         )
@@ -259,7 +261,7 @@ def network_spaces_mapped(
     ]:
         if space:
             sunbeam_client.map_maas_network_space(
-                testbed.primary_machine, space=space, network=network
+                testbed.sunbeam_machine, space=space, network=network
             )
 
 
@@ -278,7 +280,7 @@ def bootstrap_orchestration(
         return
     manifest = testbed.deployment.manifest if testbed.deployment else None
     result = sunbeam_client.bootstrap_juju_controller(
-        testbed.primary_machine,
+        testbed.sunbeam_machine,
         manifest_path=manifest,
     )
     bootstrap_result["juju_ok"] = result.succeeded
@@ -293,10 +295,10 @@ def verify_juju_deployed(
         return
     assert bootstrap_result["juju_ok"], "Juju controller bootstrap failed"
 
-    primary_ip = testbed.primary_machine.ip
+    command_machine = testbed.sunbeam_machine
     with report.step("Checking Juju controller status"):
         result = ssh_runner.run(
-            primary_ip,
+            command_machine.ip,
             "juju controllers --format json 2>/dev/null | python3 -c "
             '"import json,sys; d=json.load(sys.stdin); '
             "print(list(d.get('controllers',{}).keys()))\"",
@@ -320,7 +322,7 @@ def deploy_cloud(
         return
     manifest = testbed.deployment.manifest if testbed.deployment else None
     result = sunbeam_client.deploy_cloud(
-        testbed.primary_machine, manifest_path=manifest
+        testbed.sunbeam_machine, manifest_path=manifest
     )
     deploy_result["success"] = result.succeeded
 
@@ -336,5 +338,5 @@ def verify_services_running(
         return
     assert deploy_result["success"], "Cloud deployment failed"
     with report.step("Waiting for cluster to become ready"):
-        sunbeam_client.wait_for_ready(testbed.primary_machine, timeout=1800)
+        sunbeam_client.wait_for_ready(testbed.sunbeam_machine, timeout=1800)
     report.note("All control plane services are running")

@@ -89,8 +89,9 @@ def register_external_juju(testbed, sunbeam_client, register_result):
         register_result["controller_name"] = "mock-controller"
         return
     ctrl = testbed.juju.controller
+    command_machine = testbed.sunbeam_machine
     result: CommandResult = sunbeam_client.register_juju_controller(
-        testbed.primary_machine,
+        command_machine,
         name=ctrl.name,
         token=ctrl.token,
     )
@@ -105,12 +106,12 @@ def verify_controller_available(register_result, testbed, ssh_runner):
         return
     assert register_result["success"], "Controller registration failed"
 
-    primary_ip = testbed.primary_machine.ip
+    command_machine = testbed.sunbeam_machine
     ctrl_name = register_result["controller_name"]
 
     with report.step(f"Verifying controller {ctrl_name!r} is listed"):
         result = ssh_runner.run(
-            primary_ip,
+            command_machine.ip,
             "sunbeam juju list-controllers 2>/dev/null || echo ''",
             attach_output=False,
         )
@@ -130,8 +131,9 @@ def external_juju_registered(testbed, sunbeam_client):
     if MOCK_MODE:
         return
     ctrl = testbed.juju.controller
+    command_machine = testbed.sunbeam_machine
     result = sunbeam_client.register_juju_controller(
-        testbed.primary_machine,
+        command_machine,
         name=ctrl.name,
         token=ctrl.token,
     )
@@ -153,18 +155,19 @@ def bootstrap_with_external_controller(testbed, sunbeam_client, ext_bootstrap_re
         return
     ctrl = testbed.juju.controller
     primary = testbed.primary_machine
+    command_machine = testbed.sunbeam_machine
     manifest = testbed.deployment.manifest if testbed.deployment else None
 
     if testbed.is_maas:
         result: CommandResult = sunbeam_client.bootstrap_juju_controller(
-            testbed.primary_machine,
+            command_machine,
             controller_name=ctrl.name,
             manifest_path=manifest,
         )
     else:
         role = ",".join(primary.roles) if primary.roles else "control,compute,storage"
         result = sunbeam_client.bootstrap_with_controller(
-            testbed.primary_machine,
+            command_machine,
             controller_name=ctrl.name,
             role=role,
             manifest_path=manifest,
@@ -178,11 +181,11 @@ def verify_uses_external_controller(ext_bootstrap_result, testbed, ssh_runner):
     if MOCK_MODE:
         return
     assert ext_bootstrap_result["success"], "Bootstrap with external controller failed"
-    primary_ip = testbed.primary_machine.ip
+    command_machine = testbed.sunbeam_machine
     ctrl_name = testbed.juju.controller.name
     with report.step("Verifying cluster uses external controller"):
         ssh_runner.run(
-            primary_ip,
+            command_machine.ip,
             "sunbeam cluster status 2>/dev/null || echo ''",
             attach_output=False,
         )
@@ -195,14 +198,14 @@ def verify_services_via_external(sunbeam_client, testbed, ssh_runner):
     if MOCK_MODE:
         return
     with report.step("Waiting for cluster to become ready"):
-        sunbeam_client.wait_for_ready(testbed.primary_machine, timeout=1800)
+        sunbeam_client.wait_for_ready(testbed.sunbeam_machine, timeout=1800)
 
     ctrl_name = testbed.juju.controller.name
-    primary_ip = testbed.primary_machine.ip
+    command_machine = testbed.sunbeam_machine
 
     with report.step(f"Verifying Juju model is on {ctrl_name!r}"):
         result = ssh_runner.run(
-            primary_ip,
+            command_machine.ip,
             f"juju models --controller {ctrl_name} --format json 2>/dev/null"
             f' | python3 -c "import json,sys; d=json.load(sys.stdin);'
             f" models=[m['name'] for m in d.get('models',[])]; print(models)\"",

@@ -403,6 +403,19 @@ class TestbedConfig:
     def is_provisioned(self) -> bool:
         return self.deployment is not None and self.deployment.provisioned
 
+    @property
+    def sunbeam_machine(self) -> MachineConfig:
+        """Machine on which Sunbeam CLI commands should run."""
+        if self.is_maas:
+            proxy_jump = self.ssh.proxy_jump if self.ssh else None
+            if not proxy_jump:
+                raise ValueError(
+                    "ssh.proxy_jump must be set when deployment.provider is 'maas' "
+                    "to run Sunbeam commands from the client host"
+                )
+            return MachineConfig(hostname=proxy_jump, ip=proxy_jump, roles=[])
+        return self.primary_machine
+
     @classmethod
     def from_dict(cls, data: dict) -> TestbedConfig:
         machines_raw = data.get("machines")
