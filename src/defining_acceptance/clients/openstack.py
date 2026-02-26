@@ -21,6 +21,7 @@ from openstack.image.v2.image import Image
 from openstack.network.v2._proxy import Proxy as NetworkProxy
 from openstack.network.v2.floating_ip import FloatingIP
 from openstack.network.v2.network import Network
+from openstack.network.v2.port import Port
 from openstack.network.v2.security_group import SecurityGroup
 from openstack.network.v2.security_group_rule import SecurityGroupRule
 
@@ -193,6 +194,17 @@ class OpenStackClient:
         raise ValueError(f"Volume {volume!r} is not attached to server {server!r}")
 
     # ── Network ───────────────────────────────────────────────────────────────
+
+    def server_port_list(self, server: str) -> list[Port]:
+        """List Neutron ports attached to a server."""
+        return list(self._network.ports(device_id=server))
+
+    def server_port_security_group_ids(self, server: str) -> dict[str, list[str]]:
+        """Return security group IDs for each Neutron port attached to a server."""
+        return {
+            port.id: list(getattr(port, "security_group_ids", []) or [])
+            for port in self.server_port_list(server)
+        }
 
     def floating_ip_create(self, network: str) -> FloatingIP:
         return self._network.create_ip(floating_network_id=network)

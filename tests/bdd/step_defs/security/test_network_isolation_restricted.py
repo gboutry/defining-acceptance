@@ -28,7 +28,7 @@ def test_restricted_network_isolation():
 
 @given("the VM is on the restricted network")
 def setup_vm_restricted_network(
-    running_vm: dict, demo_os_runner: OpenStackClient, defer: DeferStack
+    running_vm: dict, demo_os_runner: OpenStackClient, ssh_runner, defer: DeferStack
 ):
     """Apply a security group that blocks all ICMP egress to the Background VM.
 
@@ -40,6 +40,37 @@ def setup_vm_restricted_network(
 
     sg_name = f"no-egress-{running_vm['server_name']}"
     server_id = running_vm["server_id"]
+    floating_ip = running_vm["floating_ip"]
+    key_path = running_vm["key_path"]
+
+    with report.step(f"Checking baseline ping to 8.8.8.8 from VM at {floating_ip}"):
+        baseline_result = vm_ssh(
+            ssh_runner,
+            floating_ip,
+            key_path,
+            "ping -c 3 -W 5 8.8.8.8",
+            timeout=30,
+            proxy_jump_host=running_vm.get("proxy_jump_host"),
+        )
+    if baseline_result.returncode != 0:
+        pytest.skip(
+            "Baseline ping to 8.8.8.8 failed before applying restrictive security group"
+        )
+    report.note("Baseline external ping to 8.8.8.8 succeeded before SG changes")
+
+    previous_sg_names = []
+    for security_group in demo_os_runner.server_show(server_id).security_groups or []:
+        sg_name_current = (
+            security_group.get("name")
+            if isinstance(security_group, dict)
+            else getattr(security_group, "name", None)
+        )
+        if sg_name_current:
+            previous_sg_names.append(sg_name_current)
+
+    for previous_sg_name in previous_sg_names:
+        demo_os_runner.server_remove_security_group(server_id, previous_sg_name)
+        defer(demo_os_runner.server_add_security_group, server_id, previous_sg_name)
 
     sg = demo_os_runner.security_group_create(
         sg_name, description="Blocks egress for isolation test"
@@ -62,6 +93,12 @@ def setup_vm_restricted_network(
 
     demo_os_runner.server_add_security_group(server_id, sg_name)
     defer(demo_os_runner.server_remove_security_group, server_id, sg_name)
+    port_security_groups = demo_os_runner.server_port_security_group_ids(server_id)
+    assert port_security_groups, f"No Neutron ports found for server {server_id!r}"
+    for port_id, security_group_ids in port_security_groups.items():
+        assert sg_id in security_group_ids, (
+            f"Security group {sg_id!r} is not applied on Neutron port {port_id!r}."
+        )
     report.note(f"Security group {sg_name!r} applied — egress blocked")
 
 
@@ -86,7 +123,7 @@ def ping_external_ip(running_vm, ssh_runner, isolation_result):
             ssh_runner,
             floating_ip,
             key_path,
-            "ping -c 3 -W 5 8.8.8.8 2>&1; echo exit:$?",
+            "ping -c 3 -W 5 8.8.8.8 2>&1",
             timeout=30,
             proxy_jump_host=running_vm.get("proxy_jump_host"),
         )
