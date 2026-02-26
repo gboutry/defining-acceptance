@@ -261,6 +261,37 @@ class TestTestbedConfigFromDict:
         assert cfg.ssh is not None
         assert cfg.ssh.user == "ubuntu"
 
+    def test_optional_external_juju_controller_parsed(self) -> None:
+        """juju.controller token config is parsed when present."""
+        cfg = TestbedConfig.from_dict(
+            {
+                "machines": [VALID_MACHINE],
+                "juju": {
+                    "external": True,
+                    "controller": {"name": "prod-controller", "token": "abc123"},
+                },
+            }
+        )
+        assert cfg.juju is not None
+        assert cfg.juju.controller is not None
+        assert cfg.juju.controller.name == "prod-controller"
+        assert cfg.juju.controller.token == "abc123"
+
+    def test_optional_maas_name_parsed(self) -> None:
+        """maas.name is parsed when present."""
+        cfg = TestbedConfig.from_dict(
+            {
+                "machines": [VALID_MACHINE],
+                "maas": {
+                    "name": "mycloud",
+                    "endpoint": "http://maas.example.com/MAAS",
+                    "api_key": "consumer:token:secret",
+                },
+            }
+        )
+        assert cfg.maas is not None
+        assert cfg.maas.name == "mycloud"
+
     def test_features_list_parsed(self) -> None:
         """features list is parsed and stored correctly."""
         cfg = TestbedConfig.from_dict(

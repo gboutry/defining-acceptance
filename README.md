@@ -30,8 +30,8 @@ Key sections:
 | `machines` | One entry per node — IP, roles (`control`/`compute`/`storage`), OSD devices, network interfaces. |
 | `features` | Sunbeam features to enable after bootstrap (`secrets`, `loadbalancer`, `caas`). |
 | `ssh` | User and private key path used by the harness. |
-| `juju` | Set `external: true` to reuse an existing Juju controller. |
-| `maas` | MAAS API endpoint and credentials (only for `provider: maas`). |
+| `juju` | Set `external: true` to reuse an existing Juju controller (`controller.name` + registration `controller.token`). |
+| `maas` | MAAS deployment name, API endpoint, and credentials (only for `provider: maas`). |
 
 ## Running tests
 

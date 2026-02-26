@@ -37,13 +37,9 @@ def verify_external_juju_exists(testbed):
         "juju.external is not set to true in testbed.yaml"
     )
     assert testbed.juju.controller, (
-        "juju.controller details (name, endpoint, user, password) "
-        "must be set when juju.external is true"
+        "juju.controller details (name, token) must be set when juju.external is true"
     )
-    report.note(
-        f"External Juju controller: {testbed.juju.controller.name} "
-        f"at {testbed.juju.controller.endpoint}"
-    )
+    report.note(f"External Juju controller: {testbed.juju.controller.name}")
 
 
 @given("the controller has a dedicated user with superuser permissions")
@@ -57,23 +53,11 @@ def verify_juju_user(testbed, ssh_runner):
     if MOCK_MODE:
         return
     controller = testbed.juju.controller
-    primary_ip = testbed.primary_machine.ip
-
-    with report.step(f"Verifying Juju user {controller.user!r}"):
-        result = ssh_runner.run(
-            primary_ip,
-            f"juju show-controller {controller.name} --format json 2>/dev/null"
-            f' | python3 -c "import json,sys; d=json.load(sys.stdin);'
-            f" print('ok' if '{controller.name}' in d else 'not found')\"",
-            attach_output=False,
+    with report.step(f"Verifying Juju user for controller {controller.name!r}"):
+        report.note(
+            "Assuming dedicated Juju user permissions are already configured; "
+            "Sunbeam registration token will validate access."
         )
-        if result.succeeded and "ok" in result.stdout:
-            report.note(f"Controller {controller.name!r} is reachable")
-        else:
-            report.note(
-                "Could not verify controller via juju CLI — "
-                "proceeding (credentials will be validated during registration)"
-            )
 
 
 # ── Scenario 1: Register external Juju controller ────────────────────────────
@@ -85,18 +69,11 @@ def get_external_controller_details(testbed):
     if MOCK_MODE:
         return
     ctrl = testbed.juju.controller
-    missing = [
-        f
-        for f in ("name", "endpoint", "user", "password")
-        if not getattr(ctrl, f, None)
-    ]
+    missing = [f for f in ("name", "token") if not getattr(ctrl, f, None)]
     assert not missing, (
         f"Missing external Juju controller fields in testbed.yaml: {missing}"
     )
-    report.note(
-        f"Controller details present: name={ctrl.name!r}, "
-        f"endpoint={ctrl.endpoint!r}, user={ctrl.user!r}"
-    )
+    report.note(f"Controller details present: name={ctrl.name!r}, token=***")
 
 
 @pytest.fixture
@@ -106,7 +83,7 @@ def register_result() -> dict:
 
 @when("I register the external Juju controller in Sunbeam")
 def register_external_juju(testbed, sunbeam_client, register_result):
-    """Call ``sunbeam controller register`` with the testbed credentials."""
+    """Call ``sunbeam juju register-controller`` with the testbed token."""
     if MOCK_MODE:
         register_result["success"] = True
         register_result["controller_name"] = "mock-controller"
@@ -114,10 +91,8 @@ def register_external_juju(testbed, sunbeam_client, register_result):
     ctrl = testbed.juju.controller
     result: CommandResult = sunbeam_client.register_juju_controller(
         testbed.primary_machine,
-        endpoint=ctrl.endpoint,
-        user=ctrl.user,
-        password=ctrl.password,
         name=ctrl.name,
+        token=ctrl.token,
     )
     register_result["success"] = result.succeeded
     register_result["controller_name"] = ctrl.name
@@ -136,7 +111,7 @@ def verify_controller_available(register_result, testbed, ssh_runner):
     with report.step(f"Verifying controller {ctrl_name!r} is listed"):
         result = ssh_runner.run(
             primary_ip,
-            "sunbeam controller list 2>/dev/null || juju controllers --format json",
+            "sunbeam juju list-controllers 2>/dev/null || echo ''",
             attach_output=False,
         )
         report.note(
@@ -157,10 +132,8 @@ def external_juju_registered(testbed, sunbeam_client):
     ctrl = testbed.juju.controller
     result = sunbeam_client.register_juju_controller(
         testbed.primary_machine,
-        endpoint=ctrl.endpoint,
-        user=ctrl.user,
-        password=ctrl.password,
         name=ctrl.name,
+        token=ctrl.token,
     )
     assert result.succeeded or "already" in result.stdout.lower(), (
         f"External controller registration failed: {result.stderr}"
@@ -180,15 +153,22 @@ def bootstrap_with_external_controller(testbed, sunbeam_client, ext_bootstrap_re
         return
     ctrl = testbed.juju.controller
     primary = testbed.primary_machine
-    role = ",".join(primary.roles) if primary.roles else "control,compute,storage"
     manifest = testbed.deployment.manifest if testbed.deployment else None
 
-    result: CommandResult = sunbeam_client.bootstrap_with_controller(
-        testbed.primary_machine,
-        controller_name=ctrl.name,
-        role=role,
-        manifest_path=manifest,
-    )
+    if testbed.is_maas:
+        result: CommandResult = sunbeam_client.bootstrap_juju_controller(
+            testbed.primary_machine,
+            controller_name=ctrl.name,
+            manifest_path=manifest,
+        )
+    else:
+        role = ",".join(primary.roles) if primary.roles else "control,compute,storage"
+        result = sunbeam_client.bootstrap_with_controller(
+            testbed.primary_machine,
+            controller_name=ctrl.name,
+            role=role,
+            manifest_path=manifest,
+        )
     ext_bootstrap_result["success"] = result.succeeded
 
 

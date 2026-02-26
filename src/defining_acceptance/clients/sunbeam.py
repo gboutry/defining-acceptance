@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from pathlib import Path
 
 from defining_acceptance.clients.ssh import CommandResult, SSHRunner
@@ -68,12 +69,15 @@ class SunbeamClient:
         self,
         machine: MachineConfig,
         bootstrap: bool = False,
+        client: bool = False,
         timeout: int = 600,
     ) -> CommandResult:
         """Run sunbeam prepare-node-script on the given machine."""
         script_cmd = "sunbeam prepare-node-script"
         if bootstrap:
             script_cmd += " --bootstrap"
+        if client:
+            script_cmd += " --client"
         with report.step(f"Prepare node {machine.hostname}"):
             result = self._ssh.run(
                 machine.ip,
@@ -198,13 +202,14 @@ class SunbeamClient:
         machine: MachineConfig,
         endpoint: str,
         api_key: str,
+        deployment_name: str = "maas",
         timeout: int = 120,
     ) -> CommandResult:
         """Register a MAAS provider with Sunbeam."""
         with report.step(f"Add MAAS provider at {endpoint!r}"):
             return self._ssh.run(
                 machine.ip,
-                f"sunbeam provider add maas --endpoint {endpoint} --api-key {api_key}",
+                f"sunbeam deployment add maas {deployment_name} {api_key} {endpoint}",
                 timeout=timeout,
             ).check()
 
@@ -219,18 +224,35 @@ class SunbeamClient:
         with report.step(f"Map MAAS space {space!r} to network {network!r}"):
             return self._ssh.run(
                 machine.ip,
-                f"sunbeam provider maas map-space --space {space} --network {network}",
+                f"sunbeam deployment space map {space} {network}",
                 timeout=timeout,
             ).check()
 
     def bootstrap_juju_controller(
-        self, machine: MachineConfig, timeout: int = 3600
+        self,
+        machine: MachineConfig,
+        controller_name: str | None = None,
+        manifest_path: str | None = None,
+        timeout: int = 3600,
     ) -> CommandResult:
-        """Bootstrap the Juju controller on the MAAS provider."""
-        with report.step("Bootstrap Juju controller via MAAS"):
+        """Bootstrap the orchestration layer on the MAAS provider."""
+        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
+        cmd = "sunbeam cluster bootstrap --accept-defaults"
+        if controller_name:
+            cmd += f" --controller {controller_name}"
+        if remote_manifest_path:
+            cmd += f" --manifest {remote_manifest_path}"
+        with report.step("Bootstrap orchestration layer via MAAS"):
+            return self._ssh.run(machine.ip, cmd, timeout=timeout).check()
+
+    def validate_deployment(
+        self, machine: MachineConfig, timeout: int = 300
+    ) -> CommandResult:
+        """Validate the configured deployment substrate."""
+        with report.step("Validate deployment"):
             return self._ssh.run(
                 machine.ip,
-                "sunbeam controller bootstrap",
+                "sunbeam deployment validate",
                 timeout=timeout,
             ).check()
 
@@ -257,43 +279,52 @@ class SunbeamClient:
     def register_juju_controller(
         self,
         machine: MachineConfig,
-        endpoint: str,
-        user: str,
-        password: str,
-        name: str | None = None,
+        name: str,
+        token: str,
         timeout: int = 120,
     ) -> CommandResult:
         """Register an existing Juju controller with Sunbeam."""
-        cmd = (
-            f"sunbeam controller register"
-            f" --endpoint {endpoint}"
-            f" --user {user}"
-            f" --password {password}"
-        )
-        if name:
-            cmd += f" --name {name}"
-        with report.step(f"Register external Juju controller at {endpoint!r}"):
+        cmd = f"sunbeam juju register-controller {name} {token}"
+        with report.step(f"Register external Juju controller {name!r}"):
             return self._ssh.run(
                 machine.ip,
                 cmd,
                 timeout=timeout,
             ).check()
 
+    def set_proxy(
+        self,
+        machine: MachineConfig,
+        http_proxy: str | None = None,
+        https_proxy: str | None = None,
+        no_proxy: str | None = None,
+        timeout: int = 120,
+    ) -> CommandResult:
+        """Update Sunbeam proxy configuration."""
+        cmd = "sunbeam proxy set"
+        if http_proxy:
+            cmd += f" --http-proxy {http_proxy}"
+        if https_proxy:
+            cmd += f" --https-proxy {https_proxy}"
+        if no_proxy:
+            cmd += f" --no-proxy {no_proxy}"
+        with report.step("Configure Sunbeam proxy settings"):
+            return self._ssh.run(machine.ip, cmd, timeout=timeout).check()
+
     def bootstrap_with_controller(
         self,
         machine: MachineConfig,
         controller_name: str,
-        role: str,
+        role: str | None = None,
         manifest_path: str | None = None,
         timeout: int = 3600,
     ) -> CommandResult:
         """Bootstrap Sunbeam using an external Juju controller."""
         remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
-        cmd = (
-            f"sunbeam cluster bootstrap --accept-defaults"
-            f" --role {role}"
-            f" --controller {controller_name}"
-        )
+        cmd = "sunbeam cluster bootstrap --accept-defaults"
+        if role is not None:
+            cmd += f" --role {role}"
+        cmd += f" --controller {controller_name}"
         if remote_manifest_path:
             cmd += f" --manifest {remote_manifest_path}"
         with report.step(f"Bootstrap with external controller {controller_name!r}"):
@@ -302,3 +333,39 @@ class SunbeamClient:
                 cmd,
                 timeout=timeout,
             ).check()
+
+    def cluster_status(
+        self, machine: MachineConfig, timeout: int = 300, attach_output: bool = True
+    ) -> CommandResult:
+        """Return current cluster status."""
+        with report.step("Get cluster status"):
+            return self._ssh.run(
+                machine.ip,
+                "sunbeam cluster status",
+                timeout=timeout,
+                attach_output=attach_output,
+            )
+
+    def wait_for_ready(
+        self,
+        machine: MachineConfig,
+        timeout: int = 1800,
+        poll_interval: int = 15,
+    ) -> CommandResult:
+        """Wait until cluster status reports a ready state."""
+        deadline = time.monotonic() + timeout
+        last_status = ""
+        with report.step(f"Wait for cluster ready (timeout={timeout}s)"):
+            while time.monotonic() < deadline:
+                status_result = self.cluster_status(
+                    machine, timeout=min(poll_interval, 60), attach_output=False
+                )
+                last_status = status_result.stdout.strip()
+                if status_result.succeeded and "ready" in last_status.lower():
+                    report.note("Cluster reported ready")
+                    return status_result
+                time.sleep(poll_interval)
+        raise TimeoutError(
+            "Timed out waiting for cluster to become ready. "
+            f"Last status output:\n{last_status}"
+        )

@@ -14,7 +14,8 @@ Feature: Network Isolation
     When I attempt to ping an external IP
     Then the connection should be blocked
 
-  @security
+  @functional
+  @proxy
   Scenario: Proxy filtering works
     Given the VM is configured to use a proxy
     When I make a web request

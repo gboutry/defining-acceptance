@@ -308,34 +308,69 @@ def _machine_role(machine: MachineConfig, is_primary: bool) -> str:
     return "control,compute,storage" if is_primary else "compute,storage"
 
 
-@pytest.fixture(scope="session")
-def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
-    """Bootstrap the Sunbeam cluster.
-
-    Installs the snap, runs prepare-node, bootstraps the primary machine, then
-    joins every additional machine listed in the testbed.  Idempotent in the
-    sense that snap install and prepare-node tolerate being run twice.
-
-    Skip automatically when ``deployment.provisioned: true`` is set.
-    """
-    if MOCK_MODE or (testbed.deployment and testbed.deployment.provisioned):
+def _configure_proxy_if_enabled(
+    testbed: TestbedConfig,
+    sunbeam_client: SunbeamClient,
+    primary: MachineConfig,
+) -> None:
+    if (
+        not testbed.has_proxy
+        or testbed.network is None
+        or testbed.network.proxy is None
+    ):
         return
+    proxy = testbed.network.proxy
+    if not any([proxy.http, proxy.https, proxy.no_proxy]):
+        report.note(
+            "Proxy is enabled but no explicit proxy values are set in testbed; "
+            "skipping sunbeam proxy set."
+        )
+        return
+    sunbeam_client.set_proxy(
+        primary,
+        http_proxy=proxy.http,
+        https_proxy=proxy.https,
+        no_proxy=proxy.no_proxy,
+    )
 
-    channel = testbed.deployment.channel if testbed.deployment else "2024.1/edge"
-    revision = testbed.deployment.revision if testbed.deployment else None
-    manifest = testbed.deployment.manifest if testbed.deployment else None
-    primary = testbed.primary_machine
 
-    with report.step(f"Bootstrapping cloud on {primary.hostname} ({primary.ip})"):
-        sunbeam_client.install_snap(primary, channel=channel, revision=revision)
-        sunbeam_client.prepare_node(primary, bootstrap=True)
+def _bootstrap_manual(
+    testbed: TestbedConfig,
+    sunbeam_client: SunbeamClient,
+    primary: MachineConfig,
+    channel: str | None,
+    revision: int | None,
+    manifest: str | None,
+) -> None:
+    sunbeam_client.install_snap(primary, channel=channel, revision=revision)
+    sunbeam_client.prepare_node(primary, bootstrap=True)
+    if testbed.has_external_juju:
+        controller = testbed.juju.controller if testbed.juju else None
+        if controller is None or not controller.token:
+            raise ValueError(
+                "juju.controller.name and juju.controller.token must be set when "
+                "juju.external is true"
+            )
+        sunbeam_client.register_juju_controller(
+            primary,
+            name=controller.name,
+            token=controller.token,
+        )
+        sunbeam_client.bootstrap_with_controller(
+            primary,
+            controller_name=controller.name,
+            role=_machine_role(primary, is_primary=True),
+            manifest_path=manifest,
+        )
+    else:
         sunbeam_client.bootstrap(
             primary,
             role=_machine_role(primary, is_primary=True),
             manifest_path=manifest,
         )
-        sunbeam_client.configure(primary)
-        sunbeam_client.cloud_config(primary)
+    _configure_proxy_if_enabled(testbed, sunbeam_client, primary)
+    sunbeam_client.configure(primary)
+    sunbeam_client.cloud_config(primary)
 
     for machine in testbed.machines[1:]:
         with report.step(
@@ -354,6 +389,102 @@ def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
 
     with report.step("Resizing cluster"):
         sunbeam_client.resize(primary)
+
+
+def _bootstrap_maas(
+    testbed: TestbedConfig,
+    sunbeam_client: SunbeamClient,
+    primary: MachineConfig,
+    channel: str | None,
+    revision: int | None,
+    manifest: str | None,
+) -> None:
+    maas = testbed.maas
+    if maas is None:
+        raise ValueError(
+            "MAAS deployment selected but no maas section found in testbed.yaml"
+        )
+    sunbeam_client.install_snap(primary, channel=channel, revision=revision)
+    sunbeam_client.prepare_node(primary, client=True)
+    sunbeam_client.add_maas_provider(
+        primary,
+        endpoint=maas.endpoint,
+        api_key=maas.api_key,
+        deployment_name=maas.name or "maas",
+    )
+    if maas.network_spaces is not None:
+        for network, space in [
+            ("management", maas.network_spaces.management),
+            ("storage", maas.network_spaces.storage),
+            ("internal", maas.network_spaces.internal),
+        ]:
+            if space:
+                sunbeam_client.map_maas_network_space(
+                    primary, space=space, network=network
+                )
+    sunbeam_client.validate_deployment(primary)
+    if testbed.has_external_juju:
+        controller = testbed.juju.controller if testbed.juju else None
+        if controller is None or not controller.token:
+            raise ValueError(
+                "juju.controller.name and juju.controller.token must be set when "
+                "juju.external is true"
+            )
+        sunbeam_client.register_juju_controller(
+            primary,
+            name=controller.name,
+            token=controller.token,
+        )
+        sunbeam_client.bootstrap_juju_controller(
+            primary,
+            controller_name=controller.name,
+            manifest_path=manifest,
+        )
+    else:
+        sunbeam_client.bootstrap_juju_controller(primary, manifest_path=manifest)
+    _configure_proxy_if_enabled(testbed, sunbeam_client, primary)
+    sunbeam_client.deploy_cloud(primary, manifest_path=manifest)
+    sunbeam_client.configure(primary)
+    sunbeam_client.cloud_config(primary)
+
+
+@pytest.fixture(scope="session")
+def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
+    """Bootstrap the Sunbeam cluster.
+
+    Uses provider-specific provisioning paths (manual or MAAS), including
+    optional external-controller and proxy setup. Idempotent in the sense that
+    snap install and prepare-node tolerate being run twice.
+
+    Skip automatically when ``deployment.provisioned: true`` is set.
+    """
+    if MOCK_MODE or (testbed.deployment and testbed.deployment.provisioned):
+        return
+
+    channel = testbed.deployment.channel if testbed.deployment else "2024.1/edge"
+    revision = testbed.deployment.revision if testbed.deployment else None
+    manifest = testbed.deployment.manifest if testbed.deployment else None
+    primary = testbed.primary_machine
+
+    with report.step(f"Bootstrapping cloud on {primary.hostname} ({primary.ip})"):
+        if testbed.is_maas:
+            _bootstrap_maas(
+                testbed=testbed,
+                sunbeam_client=sunbeam_client,
+                primary=primary,
+                channel=channel,
+                revision=revision,
+                manifest=manifest,
+            )
+        else:
+            _bootstrap_manual(
+                testbed=testbed,
+                sunbeam_client=sunbeam_client,
+                primary=primary,
+                channel=channel,
+                revision=revision,
+                manifest=manifest,
+            )
 
 
 # ── Session fixture: feature enablement ──────────────────────────────────────

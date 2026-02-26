@@ -72,9 +72,7 @@ class DeploymentConfig:
 @dataclass(frozen=True)
 class JujuControllerConfig:
     name: str
-    endpoint: str
-    user: str
-    password: str
+    token: str
 
     @classmethod
     def from_dict(cls, data: dict) -> JujuControllerConfig:
@@ -82,19 +80,11 @@ class JujuControllerConfig:
         if not isinstance(name, str) or not name.strip():
             raise ValueError("juju.controller.name must be a non-empty string")
 
-        endpoint = data.get("endpoint")
-        if not isinstance(endpoint, str) or not endpoint.strip():
-            raise ValueError("juju.controller.endpoint must be a non-empty string")
+        token = data.get("token", data.get("registration_token"))
+        if not isinstance(token, str) or not token.strip():
+            raise ValueError("juju.controller.token must be a non-empty string")
 
-        user = data.get("user")
-        if not isinstance(user, str) or not user.strip():
-            raise ValueError("juju.controller.user must be a non-empty string")
-
-        password = data.get("password")
-        if not isinstance(password, str):
-            raise ValueError("juju.controller.password must be a string")
-
-        return cls(name=name, endpoint=endpoint, user=user, password=password)
+        return cls(name=name, token=token)
 
 
 @dataclass(frozen=True)
@@ -299,6 +289,7 @@ class MaasNetworkSpaces:
 class MaasConfig:
     endpoint: str
     api_key: str
+    name: Optional[str] = None
     network_spaces: Optional[MaasNetworkSpaces] = None
 
     @classmethod
@@ -311,6 +302,10 @@ class MaasConfig:
         if not isinstance(api_key, str) or not api_key.strip():
             raise ValueError("maas.api_key must be a non-empty string")
 
+        name = data.get("name")
+        if name is not None and (not isinstance(name, str) or not name.strip()):
+            raise ValueError("maas.name must be a non-empty string when set")
+
         network_spaces_raw = data.get("network_spaces", data.get("network-spaces"))
         network_spaces = None
         if network_spaces_raw is not None:
@@ -318,7 +313,12 @@ class MaasConfig:
                 raise ValueError("maas.network_spaces must be a mapping")
             network_spaces = MaasNetworkSpaces.from_dict(network_spaces_raw)
 
-        return cls(endpoint=endpoint, api_key=api_key, network_spaces=network_spaces)
+        return cls(
+            endpoint=endpoint,
+            api_key=api_key,
+            name=name,
+            network_spaces=network_spaces,
+        )
 
 
 @dataclass(frozen=True)

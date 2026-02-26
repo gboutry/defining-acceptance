@@ -20,9 +20,7 @@ juju:
   external: false
   # controller:             # Only needed when external: true
   #   name: my-controller
-  #   endpoint: 10.0.0.1:17070
-  #   user: admin
-  #   password: secret
+  #   token: "base64-registration-token"
 
 # Network configuration
 network:
@@ -80,6 +78,7 @@ machines:
 
 # MAAS configuration (only required when deployment.provider is "maas").
 # maas:
+#   name: mycloud
 #   endpoint: http://maas.internal:5240/MAAS
 #   api_key: "consumer-key:token-key:token-secret"
 #   # Optional: map OpenStack network roles to MAAS network spaces.

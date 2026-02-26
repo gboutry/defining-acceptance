@@ -109,7 +109,7 @@ def add_maas_provider(
     sunbeam_client: SunbeamClient,
     maas_provider_result: dict,
 ) -> None:
-    """Call ``sunbeam provider add maas`` with the configured credentials."""
+    """Call ``sunbeam deployment add maas`` with the configured credentials."""
     if MOCK_MODE:
         maas_provider_result["success"] = True
         return
@@ -119,6 +119,7 @@ def add_maas_provider(
         testbed.primary_machine,
         endpoint=maas.endpoint,
         api_key=maas.api_key,
+        deployment_name=maas.name or "maas",
     )
     maas_provider_result["success"] = result.succeeded
 
@@ -139,7 +140,7 @@ def verify_maas_registered(
     with report.step("Verifying MAAS provider is listed"):
         result = ssh_runner.run(
             primary_ip,
-            "sunbeam provider list 2>/dev/null || echo ''",
+            "sunbeam deployment list 2>/dev/null || echo ''",
             attach_output=False,
         )
         if "maas" in result.stdout.lower():
@@ -164,6 +165,7 @@ def maas_provider_configured(
         testbed.primary_machine,
         endpoint=maas.endpoint,
         api_key=maas.api_key,
+        deployment_name=maas.name or "maas",
     )
     assert result.succeeded or "already" in result.stdout.lower(), (
         f"MAAS provider could not be configured: {result.stderr}"
@@ -223,7 +225,7 @@ def verify_network_mappings(
     with report.step("Verifying network space mappings"):
         result = ssh_runner.run(
             primary_ip,
-            "sunbeam provider maas list-spaces 2>/dev/null || echo ''",
+            "sunbeam deployment space list 2>/dev/null || echo ''",
             attach_output=False,
         )
         report.note(
@@ -274,7 +276,11 @@ def bootstrap_orchestration(
     if MOCK_MODE:
         bootstrap_result["juju_ok"] = True
         return
-    result = sunbeam_client.bootstrap_juju_controller(testbed.primary_machine)
+    manifest = testbed.deployment.manifest if testbed.deployment else None
+    result = sunbeam_client.bootstrap_juju_controller(
+        testbed.primary_machine,
+        manifest_path=manifest,
+    )
     bootstrap_result["juju_ok"] = result.succeeded
 
 
