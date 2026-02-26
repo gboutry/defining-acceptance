@@ -25,6 +25,7 @@ class TestDeploymentConfigFromDict:
         )
         assert cfg.channel == "2024.1/stable"
         assert cfg.revision is None
+        assert cfg.manifest_is_overlay is False
 
     def test_valid_revision_only(self) -> None:
         """Valid config with revision only is accepted."""
@@ -46,6 +47,42 @@ class TestDeploymentConfigFromDict:
         )
         assert cfg.channel == "2024.1/stable"
         assert cfg.revision == 42
+
+    def test_manifest_is_overlay_kebab_key(self) -> None:
+        """manifest-is-overlay (kebab) is accepted and parsed."""
+        cfg = DeploymentConfig.from_dict(
+            {
+                "provider": "lxd",
+                "topology": "single",
+                "channel": "2024.1/stable",
+                "manifest-is-overlay": True,
+            }
+        )
+        assert cfg.manifest_is_overlay is True
+
+    def test_manifest_is_overlay_snake_key(self) -> None:
+        """manifest_is_overlay (snake) is accepted and parsed."""
+        cfg = DeploymentConfig.from_dict(
+            {
+                "provider": "lxd",
+                "topology": "single",
+                "channel": "2024.1/stable",
+                "manifest_is_overlay": True,
+            }
+        )
+        assert cfg.manifest_is_overlay is True
+
+    def test_manifest_is_overlay_non_bool_raises(self) -> None:
+        """Non-boolean manifest_is_overlay raises ValueError."""
+        with pytest.raises(ValueError, match=r"manifest_is_overlay"):
+            DeploymentConfig.from_dict(
+                {
+                    "provider": "lxd",
+                    "topology": "single",
+                    "channel": "2024.1/stable",
+                    "manifest-is-overlay": "yes",
+                }
+            )
 
     def test_missing_provider_raises(self) -> None:
         """Missing provider raises ValueError."""

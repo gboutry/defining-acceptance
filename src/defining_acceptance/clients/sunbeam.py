@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import time
 from pathlib import Path
+from typing import Any
+
+import yaml
 
 from defining_acceptance.clients.ssh import CommandResult, SSHRunner
 from defining_acceptance.reporting import report
@@ -14,6 +17,7 @@ class SunbeamClient:
     """Execute sunbeam CLI commands on a remote machine via SSH."""
 
     _REMOTE_MANIFEST_PATH = "/home/ubuntu/manifest.yaml"
+    _SNAP_MANIFEST_ROOT = "/snap/openstack/current/etc/manifests"
 
     def __init__(self, ssh: SSHRunner) -> None:
         self._ssh = ssh
@@ -22,14 +26,52 @@ class SunbeamClient:
         self,
         machine: MachineConfig,
         manifest_path: str | None,
+        *,
+        overlay_with_snap_manifest: bool = False,
+        snap_manifest_channel: str | None = None,
     ) -> str | None:
-        """Upload a local manifest file and return its remote path."""
+        """Upload (or render) a manifest file and return its remote path."""
         if manifest_path is None:
             return None
 
         local_manifest_path = Path(manifest_path).expanduser().resolve(strict=False)
         if not local_manifest_path.is_file():
             raise FileNotFoundError(f"Manifest file not found: {local_manifest_path}")
+
+        if overlay_with_snap_manifest:
+            if not snap_manifest_channel:
+                raise ValueError(
+                    "deployment.channel must be set when using deployment.manifest "
+                    "as an overlay"
+                )
+            track, risk = self._parse_track_and_risk(snap_manifest_channel)
+            base_manifest_path = f"{self._SNAP_MANIFEST_ROOT}/{track}/{risk}.yml"
+            with report.step(f"Read snap manifest from {base_manifest_path}"):
+                base_result = self._ssh.run(
+                    machine.ip, f"sudo cat '{base_manifest_path}'"
+                )
+                base_result.check()
+
+            base_manifest = yaml.safe_load(base_result.stdout) or {}
+            overlay_manifest = (
+                yaml.safe_load(local_manifest_path.read_text(encoding="utf-8")) or {}
+            )
+            if not isinstance(base_manifest, dict):
+                raise ValueError(
+                    f"Snap manifest at {base_manifest_path} must be a YAML mapping"
+                )
+            if not isinstance(overlay_manifest, dict):
+                raise ValueError("deployment.manifest overlay must be a YAML mapping")
+
+            merged_manifest = self._deep_merge(base_manifest, overlay_manifest)
+            rendered_manifest = yaml.safe_dump(merged_manifest, sort_keys=False)
+            with report.step(f"Upload merged manifest to {machine.hostname}"):
+                self._ssh.write_file(
+                    machine.ip,
+                    self._REMOTE_MANIFEST_PATH,
+                    rendered_manifest,
+                )
+            return self._REMOTE_MANIFEST_PATH
 
         with report.step(f"Upload manifest to {machine.hostname}"):
             self._ssh.upload_file(
@@ -39,6 +81,27 @@ class SunbeamClient:
             )
 
         return self._REMOTE_MANIFEST_PATH
+
+    @staticmethod
+    def _parse_track_and_risk(channel: str) -> tuple[str, str]:
+        parts = channel.split("/")
+        if len(parts) < 2 or not parts[0] or not parts[1]:
+            raise ValueError(
+                f"Invalid deployment.channel {channel!r}; expected format <track>/<risk>"
+            )
+        return parts[0], parts[1]
+
+    @classmethod
+    def _deep_merge(cls, base: Any, overlay: Any) -> Any:
+        if isinstance(base, dict) and isinstance(overlay, dict):
+            merged: dict[Any, Any] = dict(base)
+            for key, value in overlay.items():
+                if key in merged:
+                    merged[key] = cls._deep_merge(merged[key], value)
+                else:
+                    merged[key] = value
+            return merged
+        return overlay
 
     def install_snap(
         self,
@@ -91,10 +154,18 @@ class SunbeamClient:
         machine: MachineConfig,
         role: str,
         manifest_path: str | None = None,
+        *,
+        overlay_with_snap_manifest: bool = False,
+        snap_manifest_channel: str | None = None,
         timeout: int = 4000,
     ) -> CommandResult:
         """Bootstrap the sunbeam cluster on the primary machine."""
-        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
+        remote_manifest_path = self._prepare_remote_manifest(
+            machine,
+            manifest_path,
+            overlay_with_snap_manifest=overlay_with_snap_manifest,
+            snap_manifest_channel=snap_manifest_channel,
+        )
         command = f"sunbeam cluster bootstrap --accept-defaults --role {role}"
         if remote_manifest_path is not None:
             command = f"{command} --manifest {remote_manifest_path}"
@@ -233,10 +304,18 @@ class SunbeamClient:
         machine: MachineConfig,
         controller_name: str | None = None,
         manifest_path: str | None = None,
+        *,
+        overlay_with_snap_manifest: bool = False,
+        snap_manifest_channel: str | None = None,
         timeout: int = 3600,
     ) -> CommandResult:
         """Bootstrap the orchestration layer on the MAAS provider."""
-        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
+        remote_manifest_path = self._prepare_remote_manifest(
+            machine,
+            manifest_path,
+            overlay_with_snap_manifest=overlay_with_snap_manifest,
+            snap_manifest_channel=snap_manifest_channel,
+        )
         cmd = "sunbeam cluster bootstrap --accept-defaults"
         if controller_name:
             cmd += f" --controller {controller_name}"
@@ -260,10 +339,18 @@ class SunbeamClient:
         self,
         machine: MachineConfig,
         manifest_path: str | None = None,
+        *,
+        overlay_with_snap_manifest: bool = False,
+        snap_manifest_channel: str | None = None,
         timeout: int = 7200,
     ) -> CommandResult:
         """Deploy OpenStack on the bootstrapped Juju controller."""
-        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
+        remote_manifest_path = self._prepare_remote_manifest(
+            machine,
+            manifest_path,
+            overlay_with_snap_manifest=overlay_with_snap_manifest,
+            snap_manifest_channel=snap_manifest_channel,
+        )
         cmd = "sunbeam cluster deploy"
         if remote_manifest_path:
             cmd += f" --manifest {remote_manifest_path}"
@@ -317,10 +404,18 @@ class SunbeamClient:
         controller_name: str,
         role: str | None = None,
         manifest_path: str | None = None,
+        *,
+        overlay_with_snap_manifest: bool = False,
+        snap_manifest_channel: str | None = None,
         timeout: int = 3600,
     ) -> CommandResult:
         """Bootstrap Sunbeam using an external Juju controller."""
-        remote_manifest_path = self._prepare_remote_manifest(machine, manifest_path)
+        remote_manifest_path = self._prepare_remote_manifest(
+            machine,
+            manifest_path,
+            overlay_with_snap_manifest=overlay_with_snap_manifest,
+            snap_manifest_channel=snap_manifest_channel,
+        )
         cmd = "sunbeam cluster bootstrap --accept-defaults"
         if role is not None:
             cmd += f" --role {role}"

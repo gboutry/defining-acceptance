@@ -157,12 +157,18 @@ def bootstrap_with_external_controller(testbed, sunbeam_client, ext_bootstrap_re
     primary = testbed.primary_machine
     command_machine = testbed.sunbeam_machine
     manifest = testbed.deployment.manifest if testbed.deployment else None
+    channel = testbed.deployment.channel if testbed.deployment else None
+    manifest_is_overlay = (
+        testbed.deployment.manifest_is_overlay if testbed.deployment else False
+    )
 
     if testbed.is_maas:
         result: CommandResult = sunbeam_client.bootstrap_juju_controller(
             command_machine,
             controller_name=ctrl.name,
             manifest_path=manifest,
+            overlay_with_snap_manifest=manifest_is_overlay,
+            snap_manifest_channel=channel,
         )
     else:
         role = ",".join(primary.roles) if primary.roles else "control,compute,storage"
@@ -171,6 +177,8 @@ def bootstrap_with_external_controller(testbed, sunbeam_client, ext_bootstrap_re
             controller_name=ctrl.name,
             role=role,
             manifest_path=manifest,
+            overlay_with_snap_manifest=manifest_is_overlay,
+            snap_manifest_channel=channel,
         )
     ext_bootstrap_result["success"] = result.succeeded
 

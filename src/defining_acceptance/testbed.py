@@ -14,6 +14,7 @@ class DeploymentConfig:
     channel: Optional[str] = None
     revision: Optional[int] = None
     manifest: Optional[str] = None
+    manifest_is_overlay: bool = False
     provisioned: bool = False
     clouds_yaml: Optional[str] = None
 
@@ -46,6 +47,12 @@ class DeploymentConfig:
         if manifest is not None and not isinstance(manifest, str):
             raise ValueError("deployment.manifest must be a string when set")
 
+        manifest_is_overlay = data.get(
+            "manifest_is_overlay", data.get("manifest-is-overlay", False)
+        )
+        if not isinstance(manifest_is_overlay, bool):
+            raise ValueError("deployment.manifest_is_overlay must be a boolean")
+
         provisioned = data.get("provisioned", False)
         if not isinstance(provisioned, bool):
             raise ValueError("deployment.provisioned must be a boolean")
@@ -64,6 +71,7 @@ class DeploymentConfig:
             channel=channel,
             revision=revision,
             manifest=manifest,
+            manifest_is_overlay=manifest_is_overlay,
             provisioned=provisioned,
             clouds_yaml=clouds_yaml,
         )

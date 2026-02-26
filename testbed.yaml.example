@@ -8,7 +8,12 @@ deployment:
   provider: manual          # Required. manual | maas
   topology: multi-node      # Required. single-node | multi-node
   channel: 2024.1/edge      # Required. Snap channel for the openstack snap
-  manifest: /home/ubuntu/manifest.yaml  # Optional: path to sunbeam manifest on the target machine
+  manifest: ./manifest.yaml          # Optional: local manifest file path.
+  manifest-is-overlay: false         # Optional (default: false).
+                                     # false: manifest is used as a complete manifest.
+                                     # true: manifest is overlaid on
+                                     # /snap/openstack/current/etc/manifests/<track>/<risk>.yml
+                                     # resolved from deployment.channel.
   provisioned: false      # Optional (default: false). Set to true if the cloud is already
                           # deployed — provisioning tests will be skipped.
   clouds_yaml: /path/to/clouds.yaml  # Optional: path to clouds.yaml for OpenStack SDK access.

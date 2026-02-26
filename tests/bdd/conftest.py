@@ -347,6 +347,7 @@ def _bootstrap_manual(
     channel: str | None,
     revision: int | None,
     manifest: str | None,
+    manifest_is_overlay: bool,
 ) -> None:
     sunbeam_client.install_snap(primary, channel=channel, revision=revision)
     sunbeam_client.prepare_node(primary, bootstrap=True)
@@ -367,12 +368,16 @@ def _bootstrap_manual(
             controller_name=controller.name,
             role=_machine_role(primary, is_primary=True),
             manifest_path=manifest,
+            overlay_with_snap_manifest=manifest_is_overlay,
+            snap_manifest_channel=channel,
         )
     else:
         sunbeam_client.bootstrap(
             primary,
             role=_machine_role(primary, is_primary=True),
             manifest_path=manifest,
+            overlay_with_snap_manifest=manifest_is_overlay,
+            snap_manifest_channel=channel,
         )
     _configure_proxy_if_enabled(testbed, sunbeam_client, primary)
     sunbeam_client.configure(primary)
@@ -404,6 +409,7 @@ def _bootstrap_maas(
     channel: str | None,
     revision: int | None,
     manifest: str | None,
+    manifest_is_overlay: bool,
 ) -> None:
     maas = testbed.maas
     if maas is None:
@@ -445,13 +451,23 @@ def _bootstrap_maas(
             sunbeam_machine,
             controller_name=controller.name,
             manifest_path=manifest,
+            overlay_with_snap_manifest=manifest_is_overlay,
+            snap_manifest_channel=channel,
         )
     else:
         sunbeam_client.bootstrap_juju_controller(
-            sunbeam_machine, manifest_path=manifest
+            sunbeam_machine,
+            manifest_path=manifest,
+            overlay_with_snap_manifest=manifest_is_overlay,
+            snap_manifest_channel=channel,
         )
     _configure_proxy_if_enabled(testbed, sunbeam_client, sunbeam_machine)
-    sunbeam_client.deploy_cloud(sunbeam_machine, manifest_path=manifest)
+    sunbeam_client.deploy_cloud(
+        sunbeam_machine,
+        manifest_path=manifest,
+        overlay_with_snap_manifest=manifest_is_overlay,
+        snap_manifest_channel=channel,
+    )
     sunbeam_client.configure(sunbeam_machine)
     sunbeam_client.cloud_config(sunbeam_machine)
 
@@ -472,6 +488,9 @@ def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
     channel = testbed.deployment.channel if testbed.deployment else "2024.1/edge"
     revision = testbed.deployment.revision if testbed.deployment else None
     manifest = testbed.deployment.manifest if testbed.deployment else None
+    manifest_is_overlay = (
+        testbed.deployment.manifest_is_overlay if testbed.deployment else False
+    )
     primary = testbed.primary_machine
     sunbeam_machine = testbed.sunbeam_machine
 
@@ -488,6 +507,7 @@ def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
                 channel=channel,
                 revision=revision,
                 manifest=manifest,
+                manifest_is_overlay=manifest_is_overlay,
             )
         else:
             _bootstrap_manual(
@@ -497,6 +517,7 @@ def bootstrapped(testbed: TestbedConfig, sunbeam_client: SunbeamClient) -> None:
                 channel=channel,
                 revision=revision,
                 manifest=manifest,
+                manifest_is_overlay=manifest_is_overlay,
             )
 
 

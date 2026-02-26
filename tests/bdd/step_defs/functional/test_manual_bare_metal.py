@@ -172,9 +172,17 @@ def bootstrap_cloud(sunbeam_client, testbed, bootstrap_result):
     machine = testbed.primary_machine
     role = ",".join(machine.roles) if machine.roles else "control,compute,storage"
     manifest = testbed.deployment.manifest if testbed.deployment else None
+    channel = testbed.deployment.channel if testbed.deployment else None
+    manifest_is_overlay = (
+        testbed.deployment.manifest_is_overlay if testbed.deployment else False
+    )
 
     result = sunbeam_client.bootstrap(
-        testbed.primary_machine, role=role, manifest_path=manifest
+        testbed.primary_machine,
+        role=role,
+        manifest_path=manifest,
+        overlay_with_snap_manifest=manifest_is_overlay,
+        snap_manifest_channel=channel,
     )
     bootstrap_result["result"] = result
     bootstrap_result["role"] = role

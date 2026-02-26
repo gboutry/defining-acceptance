@@ -279,9 +279,15 @@ def bootstrap_orchestration(
         bootstrap_result["juju_ok"] = True
         return
     manifest = testbed.deployment.manifest if testbed.deployment else None
+    channel = testbed.deployment.channel if testbed.deployment else None
+    manifest_is_overlay = (
+        testbed.deployment.manifest_is_overlay if testbed.deployment else False
+    )
     result = sunbeam_client.bootstrap_juju_controller(
         testbed.sunbeam_machine,
         manifest_path=manifest,
+        overlay_with_snap_manifest=manifest_is_overlay,
+        snap_manifest_channel=channel,
     )
     bootstrap_result["juju_ok"] = result.succeeded
 
@@ -321,8 +327,15 @@ def deploy_cloud(
         deploy_result["success"] = True
         return
     manifest = testbed.deployment.manifest if testbed.deployment else None
+    channel = testbed.deployment.channel if testbed.deployment else None
+    manifest_is_overlay = (
+        testbed.deployment.manifest_is_overlay if testbed.deployment else False
+    )
     result = sunbeam_client.deploy_cloud(
-        testbed.sunbeam_machine, manifest_path=manifest
+        testbed.sunbeam_machine,
+        manifest_path=manifest,
+        overlay_with_snap_manifest=manifest_is_overlay,
+        snap_manifest_channel=channel,
     )
     deploy_result["success"] = result.succeeded
 
