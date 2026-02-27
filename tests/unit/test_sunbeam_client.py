@@ -97,3 +97,16 @@ def test_prepare_remote_manifest_overlay_requires_channel(tmp_path: Path) -> Non
             str(overlay),
             overlay_with_snap_manifest=True,
         )
+
+
+def test_map_maas_network_space_uses_space_network_syntax() -> None:
+    ssh = _FakeSSH()
+    client = SunbeamClient(ssh=ssh)  # type: ignore[arg-type]
+
+    result = client.map_maas_network_space(_machine(), space="public", network="public")
+
+    assert result.succeeded
+    assert ssh.run_calls[-1] == (
+        "10.0.0.10",
+        "sunbeam deployment space map public:public",
+    )

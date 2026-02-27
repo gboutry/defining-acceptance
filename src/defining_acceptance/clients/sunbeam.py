@@ -295,7 +295,7 @@ class SunbeamClient:
         with report.step(f"Map MAAS space {space!r} to network {network!r}"):
             return self._ssh.run(
                 machine.ip,
-                f"sunbeam deployment space map {space} {network}",
+                f"sunbeam deployment space map {space}:{network}",
                 timeout=timeout,
             ).check()
 

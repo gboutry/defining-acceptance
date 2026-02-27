@@ -89,7 +89,10 @@ machines:
 #   # Optional: map OpenStack network roles to MAAS network spaces.
 #   network_spaces:
 #     management: mgmt-space
+#     public: public-space
+#     data: data-space
 #     storage: storage-space
+#     storage-cluster: storage-cluster-space
 #     internal: internal-space
 
 # SSH credentials used by the test harness to connect to each machine.

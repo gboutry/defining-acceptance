@@ -275,6 +275,9 @@ class MaasNetworkSpaces:
     management: Optional[str] = None
     storage: Optional[str] = None
     internal: Optional[str] = None
+    public: Optional[str] = None
+    data: Optional[str] = None
+    storage_cluster: Optional[str] = None
 
     @classmethod
     def from_dict(cls, data: dict) -> MaasNetworkSpaces:
@@ -290,7 +293,28 @@ class MaasNetworkSpaces:
         if internal is not None and not isinstance(internal, str):
             raise ValueError("maas.network_spaces.internal must be a string when set")
 
-        return cls(management=management, storage=storage, internal=internal)
+        public = data.get("public")
+        if public is not None and not isinstance(public, str):
+            raise ValueError("maas.network_spaces.public must be a string when set")
+
+        data_space = data.get("data")
+        if data_space is not None and not isinstance(data_space, str):
+            raise ValueError("maas.network_spaces.data must be a string when set")
+
+        storage_cluster = data.get("storage_cluster", data.get("storage-cluster"))
+        if storage_cluster is not None and not isinstance(storage_cluster, str):
+            raise ValueError(
+                "maas.network_spaces.storage_cluster must be a string when set"
+            )
+
+        return cls(
+            management=management,
+            storage=storage,
+            internal=internal,
+            public=public,
+            data=data_space,
+            storage_cluster=storage_cluster,
+        )
 
 
 @dataclass(frozen=True)

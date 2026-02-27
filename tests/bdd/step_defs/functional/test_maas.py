@@ -203,6 +203,9 @@ def map_network_spaces(
         "management": typed_spaces.management,
         "storage": typed_spaces.storage,
         "internal": typed_spaces.internal,
+        "public": typed_spaces.public,
+        "data": typed_spaces.data,
+        "storage-cluster": typed_spaces.storage_cluster,
     }
     for network, space in mappings.items():
         if space:
@@ -258,6 +261,9 @@ def network_spaces_mapped(
         ("management", typed_spaces.management),
         ("storage", typed_spaces.storage),
         ("internal", typed_spaces.internal),
+        ("public", typed_spaces.public),
+        ("data", typed_spaces.data),
+        ("storage-cluster", typed_spaces.storage_cluster),
     ]:
         if space:
             sunbeam_client.map_maas_network_space(

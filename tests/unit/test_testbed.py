@@ -329,6 +329,31 @@ class TestTestbedConfigFromDict:
         assert cfg.maas is not None
         assert cfg.maas.name == "mycloud"
 
+    def test_optional_maas_network_spaces_parsed(self) -> None:
+        """maas.network_spaces supports all Sunbeam network mappings."""
+        cfg = TestbedConfig.from_dict(
+            {
+                "machines": [VALID_MACHINE],
+                "maas": {
+                    "endpoint": "http://maas.example.com/MAAS",
+                    "api_key": "consumer:token:secret",
+                    "network_spaces": {
+                        "management": "management",
+                        "public": "public",
+                        "data": "data",
+                        "storage": "storage",
+                        "storage-cluster": "storage-cluster",
+                        "internal": "internal",
+                    },
+                },
+            }
+        )
+        assert cfg.maas is not None
+        assert cfg.maas.network_spaces is not None
+        assert cfg.maas.network_spaces.public == "public"
+        assert cfg.maas.network_spaces.data == "data"
+        assert cfg.maas.network_spaces.storage_cluster == "storage-cluster"
+
     def test_features_list_parsed(self) -> None:
         """features list is parsed and stored correctly."""
         cfg = TestbedConfig.from_dict(

@@ -429,6 +429,9 @@ def _bootstrap_maas(
             ("management", maas.network_spaces.management),
             ("storage", maas.network_spaces.storage),
             ("internal", maas.network_spaces.internal),
+            ("public", maas.network_spaces.public),
+            ("data", maas.network_spaces.data),
+            ("storage-cluster", maas.network_spaces.storage_cluster),
         ]:
             if space:
                 sunbeam_client.map_maas_network_space(
