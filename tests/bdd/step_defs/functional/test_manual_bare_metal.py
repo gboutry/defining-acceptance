@@ -28,7 +28,7 @@ def test_bootstrap_single_node():
 # Minimum hardware requirements for a Sunbeam single-node deployment.
 _MIN_CPUS = 4
 _MIN_RAM_MB = 16_000
-_MIN_DISK_GB = 100
+_MIN_DISK_GIB = 93  # ~100 GB (1 GB = 10^9 bytes ≈ 0.93 GiB)
 
 
 @given("a machine meets minimum hardware requirements")
@@ -44,10 +44,12 @@ def verify_hardware_requirements(ssh_runner, testbed):
                 ip, "free -m | awk '/^Mem:/{print $2}'", attach_output=False
             ).stdout.strip()
         )
-        disk_gb = int(
+        # Check total disk size (column $2), not free space ($4).
+        # df -BG reports in GiB (1 GiB = 2^30 bytes).
+        total_disk_gib = int(
             ssh_runner.run(
                 ip,
-                'df -BG / | awk \'NR==2{gsub("G","",$4); print $4}\'',
+                'df -BG / | awk \'NR==2{gsub("G","",$2); print $2}\'',
                 attach_output=False,
             ).stdout.strip()
         )
@@ -56,11 +58,11 @@ def verify_hardware_requirements(ssh_runner, testbed):
         assert ram_mb >= _MIN_RAM_MB, (
             f"Insufficient RAM: {ram_mb} MB < {_MIN_RAM_MB} MB"
         )
-        assert disk_gb >= _MIN_DISK_GB, (
-            f"Insufficient disk: {disk_gb} GB free < {_MIN_DISK_GB} GB"
+        assert total_disk_gib >= _MIN_DISK_GIB, (
+            f"Insufficient disk: {total_disk_gib} GiB total < {_MIN_DISK_GIB} GiB (~100 GB)"
         )
         report.note(
-            f"Hardware OK: {cpus} CPUs, {ram_mb} MB RAM, {disk_gb} GB disk free"
+            f"Hardware OK: {cpus} CPUs, {ram_mb} MB RAM, {total_disk_gib} GiB total disk"
         )
 
 

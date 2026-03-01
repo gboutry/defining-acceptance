@@ -44,9 +44,9 @@ def wait_for_vm_ssh(
             )
             if result.succeeded:
                 return
-        except SSHError:
-            # Ignore SSH errors, which likely indicate that the VM is not ready yet.
-            continue
+        except (SSHError, OSError, TimeoutError, Exception):
+            # Broad catch: SSH errors, connection refused, timeouts, etc.
+            pass
         time.sleep(5)
     raise TimeoutError(
         f"SSH to VM at {vm_ip} did not become available within {timeout}s"

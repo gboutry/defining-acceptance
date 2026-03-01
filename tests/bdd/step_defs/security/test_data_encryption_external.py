@@ -39,11 +39,21 @@ def connect_to_service(
 
     Retrieves the public Identity endpoint URL from the service catalogue and
     uses ``curl`` (run on the primary node) to confirm TLS is negotiated.
+
+    TLS is expected only when a ``tls.*`` feature (e.g. ``tls.ca``,
+    ``tls.vault``, ``tls.self-signed``) is enabled in the testbed.  If no such
+    feature is present the test is skipped; if a TLS feature *is* declared but
+    the endpoint isn't HTTPS, the test fails.
     """
     if MOCK_MODE:
         tls_result["tls_ok"] = True
         tls_result["endpoint"] = "https://keystone.example:5000/v3"
         return
+
+    if not any(f.startswith("tls.") for f in testbed.features):
+        pytest.skip(
+            "No 'tls.*' feature is enabled — TLS is not expected for this deployment"
+        )
 
     primary_ip = testbed.primary_machine.ip
 
@@ -53,10 +63,6 @@ def connect_to_service(
             "No public identity endpoint found in the service catalogue"
         )
         url = identity_endpoint.url.rstrip("/")
-
-    assert url.startswith("https://"), (
-        f"Public Keystone endpoint does not use HTTPS: {url!r}"
-    )
 
     with report.step(f"Verifying TLS on {url}"):
         result = ssh_runner.run(

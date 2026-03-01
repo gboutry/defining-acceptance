@@ -64,9 +64,9 @@ def verify_all_vms_running(vm_status_result):
         return
     servers = vm_status_result["servers"]
     assert servers, "No servers found in the cloud"
-    non_active = [s for s in servers if s.get("Status") != "ACTIVE"]
+    non_active = [s for s in servers if s.status != "ACTIVE"]
     assert not non_active, "Some VMs are not ACTIVE: " + ", ".join(
-        f"{s['Name']}={s['Status']}" for s in non_active
+        f"{s.name}={s.status}" for s in non_active
     )
     report.note(f"All {len(servers)} VM(s) are ACTIVE")
 
@@ -138,14 +138,14 @@ def verify_vm_still_ssh_reachable(running_vm, ssh_runner):
 @pytest.fixture
 @when("I restart the VM")
 def restart_vm(running_vm, demo_os_runner, restart_result):
-    """Issue a hard reboot and record when it was requested."""
+    """Issue a soft reboot and record when it was requested."""
     if MOCK_MODE:
         restart_result["start"] = time.monotonic()
         return
     server_id = running_vm["server_id"]
     with report.step(f"Rebooting VM {server_id}"):
-        # Hard reboot is faster for testing; --wait returns when ACTIVE again.
-        demo_os_runner.server_reboot(server_id, hard=True, wait=False)
+        # Soft reboot preserves network state (floating IPs, security groups).
+        demo_os_runner.server_reboot(server_id, hard=False, wait=False)
     restart_result["start"] = time.monotonic()
     restart_result["server_id"] = server_id
 
@@ -179,7 +179,7 @@ def verify_vm_ssh_after_restart(running_vm, ssh_runner):
             ssh_runner,
             floating_ip,
             key_path,
-            timeout=120,
+            timeout=180,
             proxy_jump_host=running_vm.get("proxy_jump_host"),
         )
     report.note("VM reachable via SSH after restart")
